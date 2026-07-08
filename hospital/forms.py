@@ -68,7 +68,7 @@ class MedicalRecordForm(forms.ModelForm):
 class PrescriptionItemForm(forms.ModelForm):
     class Meta:
         model = PrescriptionItem
-        fields = ["drug", "dosage", "frequency", "duration", "instructions"]
+        fields = ["drug", "quantity", "dosage", "frequency", "duration", "instructions"]
         widgets = {
             "instructions": forms.Textarea(attrs={"rows": 2}),
         }

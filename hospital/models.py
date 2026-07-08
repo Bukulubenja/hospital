@@ -267,10 +267,21 @@ class PrescriptionItem(models.Model):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name="items")
     drug = models.ForeignKey(Drug, on_delete=models.PROTECT, related_name="prescription_items")
 
+    quantity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
     dosage = models.CharField(max_length=100)
     frequency = models.CharField(max_length=100)
     duration = models.CharField(max_length=100)
     instructions = models.TextField(blank=True)
+
+    dispensed = models.BooleanField(default=False)
+    dispensed_at = models.DateTimeField(null=True, blank=True)
+    dispensed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="prescription_items_dispensed",
+    )
 
     def __str__(self):
         return f"{self.drug.name} for {self.prescription.patient.full_name}"

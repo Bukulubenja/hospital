@@ -5,7 +5,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,11 +25,13 @@ from .models import (
     LabOrderItem,
     Patient,
     Prescription,
+    PrescriptionItem,
     QueueTicket,
+    Stock,
     Visit,
 )
 from .permissions import can_doctor_access
-from .services import visit_status_after_consultation
+from .services import dispense_prescription_item, visit_status_after_consultation
 
 # Single source of truth for where each role lands after login.
 # Reused by both login_view and post_login_redirect so they can never
@@ -110,7 +112,6 @@ def _make_dashboard_view(role, template_name):
 
 nurse_dashboard = _make_dashboard_view("NURSE", "dashboards/nurse_dashboard.html")
 lab_dashboard = _make_dashboard_view("LAB", "dashboards/lab.html")
-pharmacy_dashboard = _make_dashboard_view("PHARMACIST", "dashboards/pharmacy.html")
 cashier_dashboard = _make_dashboard_view("CASHIER", "dashboards/cashier.html")
 admin_dashboard = _make_dashboard_view("ADMIN", "dashboards/admin.html")
 patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
@@ -458,3 +459,71 @@ def visit_complete(request, pk):
         request, f"Visit for {visit.patient.full_name} marked {visit.get_status_display()}."
     )
     return redirect("doctor_dashboard")
+
+
+# ---------------------------------------------------------------------
+# Pharmacy workflow: dispense prescriptions for visits awaiting pharmacy
+# ---------------------------------------------------------------------
+
+@role_required("PHARMACIST")
+def pharmacy_dashboard(request):
+    visits = (
+        Visit.objects.select_related("patient")
+        .filter(status=Visit.Status.WAITING_PHARMACY)
+        .order_by("visit_date")
+    )
+    return render(request, "dashboards/pharmacy.html", {"visits": visits})
+
+
+@role_required("PHARMACIST")
+def prescription_detail(request, pk):
+    visit = get_object_or_404(Visit.objects.select_related("patient"), pk=pk)
+    if visit.status not in (Visit.Status.WAITING_PHARMACY, Visit.Status.COMPLETED):
+        raise PermissionDenied("This visit is not awaiting pharmacy.")
+
+    prescription = get_object_or_404(Prescription, visit=visit)
+    items = list(prescription.items.select_related("drug").all())
+
+    stock_by_drug = {
+        row["drug"]: row["total"]
+        for row in Stock.objects.filter(drug__in=[item.drug_id for item in items])
+        .values("drug")
+        .annotate(total=Sum("quantity"))
+    }
+    for item in items:
+        item.available_stock = stock_by_drug.get(item.drug_id, 0)
+
+    context = {
+        "visit": visit,
+        "prescription": prescription,
+        "items": items,
+        "can_dispense": visit.status == Visit.Status.WAITING_PHARMACY,
+    }
+    return render(request, "dashboards/prescription_detail.html", context)
+
+
+@role_required("PHARMACIST")
+def dispense_item(request, pk, item_pk):
+    if request.method != "POST":
+        return redirect("prescription_detail", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+    if visit.status != Visit.Status.WAITING_PHARMACY:
+        messages.error(request, "This visit is not awaiting pharmacy.")
+        return redirect("pharmacy_dashboard")
+
+    item = get_object_or_404(PrescriptionItem, pk=item_pk, prescription__visit=visit)
+    if item.dispensed:
+        messages.info(request, f"{item.drug.name} was already dispensed.")
+        return redirect("prescription_detail", pk=pk)
+
+    if dispense_prescription_item(item, request.user):
+        messages.success(request, f"Dispensed {item.drug.name} x{item.quantity}.")
+        if not item.prescription.items.filter(dispensed=False).exists():
+            visit.status = Visit.Status.COMPLETED
+            visit.save(update_fields=["status"])
+            messages.success(request, "All items dispensed — visit completed.")
+    else:
+        messages.error(request, f"Not enough stock to dispense {item.drug.name}.")
+
+    return redirect("prescription_detail", pk=pk)

@@ -29,6 +29,12 @@ urlpatterns = [
     ),
     path("visits/<int:pk>/lab-tests/add/", views.visit_add_lab_test, name="visit_add_lab_test"),
     path("visits/<int:pk>/complete/", views.visit_complete, name="visit_complete"),
+    path("pharmacy/visits/<int:pk>/", views.prescription_detail, name="prescription_detail"),
+    path(
+        "pharmacy/visits/<int:pk>/items/<int:item_pk>/dispense/",
+        views.dispense_item,
+        name="dispense_prescription_item",
+    ),
     path("prescription_refill/", views.prescription_refill, name="prescription_refill"),
     path("telemedicine_start/", views.telemedicine_start, name="telemedicine_start"),
     path("records_download/", views.records_download, name="records_download"),

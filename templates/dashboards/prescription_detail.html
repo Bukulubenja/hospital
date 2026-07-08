@@ -1,0 +1,85 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Prescription — {{ visit.patient.full_name }}</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>{{ visit.patient.full_name }}</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'pharmacy_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="stat-row">
+				<div class="stat">
+					<div class="value">{{ visit.patient.patient_number }}</div>
+					<div class="label">Patient #</div>
+				</div>
+				<div class="stat">
+					<div class="value">{{ visit.doctor.get_full_name|default:"—" }}</div>
+					<div class="label">Prescribing doctor</div>
+				</div>
+				<div class="stat">
+					<div class="value"><span class="badge badge-{{ visit.status|lower }}">{{ visit.get_status_display }}</span></div>
+					<div class="label">Visit status</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Prescription items</strong>
+			</div>
+			<table>
+				<thead>
+					<tr><th>Drug</th><th>Qty</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>In stock</th><th>Status</th><th></th></tr>
+				</thead>
+				<tbody>
+					{% for item in items %}
+						<tr>
+							<td>{{ item.drug.name }} {{ item.drug.strength }}</td>
+							<td>{{ item.quantity }}</td>
+							<td>{{ item.dosage }}</td>
+							<td>{{ item.frequency }}</td>
+							<td>{{ item.duration }}</td>
+							<td class="{% if item.available_stock < item.quantity %}stock-low{% else %}stock-ok{% endif %}">
+								{{ item.available_stock }}
+							</td>
+							<td>
+								{% if item.dispensed %}
+									<span class="badge badge-completed">Dispensed</span>
+								{% else %}
+									<span class="badge badge-scheduled">Pending</span>
+								{% endif %}
+							</td>
+							<td>
+								{% if not item.dispensed and can_dispense %}
+									<form method="post" action="{% url 'dispense_prescription_item' visit.pk item.pk %}">
+										{% csrf_token %}
+										<button type="submit" class="btn-ghost">Dispense</button>
+									</form>
+								{% endif %}
+							</td>
+						</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</body>
+</html>

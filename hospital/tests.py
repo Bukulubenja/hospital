@@ -12,8 +12,11 @@ from .models import (
     LabTest,
     MedicalRecord,
     Patient,
+    Prescription,
     PrescriptionItem,
     QueueTicket,
+    Stock,
+    StockTransaction,
     User,
     Visit,
     VitalSigns,
@@ -232,7 +235,7 @@ class DoctorWorkflowTests(TestCase):
         self.assertEqual(self.visit.diagnosis_summary, "Suspected infection")
 
         self.client.post(reverse("visit_add_prescription_item", args=[self.visit.pk]), {
-            "drug": self.drug.pk, "dosage": "1 tablet", "frequency": "3x daily",
+            "drug": self.drug.pk, "quantity": "15", "dosage": "1 tablet", "frequency": "3x daily",
             "duration": "5 days", "instructions": "After meals",
         })
         self.assertEqual(PrescriptionItem.objects.filter(prescription__visit=self.visit).count(), 1)
@@ -265,7 +268,7 @@ class DoctorWorkflowTests(TestCase):
     def test_prescription_only_routes_to_waiting_pharmacy(self):
         self.client.post(reverse("visit_start", args=[self.visit.pk]))
         self.client.post(reverse("visit_add_prescription_item", args=[self.visit.pk]), {
-            "drug": self.drug.pk, "dosage": "1 tablet", "frequency": "once daily",
+            "drug": self.drug.pk, "quantity": "9", "dosage": "1 tablet", "frequency": "once daily",
             "duration": "3 days", "instructions": "",
         })
 
@@ -273,3 +276,147 @@ class DoctorWorkflowTests(TestCase):
 
         self.visit.refresh_from_db()
         self.assertEqual(self.visit.status, Visit.Status.WAITING_PHARMACY)
+
+
+class PharmacyWorkflowTests(TestCase):
+    def setUp(self):
+        self.pharmacist = User.objects.create_user(
+            username="pharm1", password="pass1234", role=User.Role.PHARMACIST
+        )
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.department = Department.objects.create(name="General Medicine")
+        self.patient = Patient.objects.create(
+            full_name="Needs Meds", gender="F", date_of_birth="1988-01-01",
+            phone="0700000001", patient_number="P-200001",
+        )
+        self.visit = Visit.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_PHARMACY,
+        )
+        self.drug = Drug.objects.create(
+            name="Amoxicillin", category="Antibiotic", strength="500mg", unit_price=10
+        )
+        self.prescription = Prescription.objects.create(
+            visit=self.visit, doctor=self.doctor, patient=self.patient
+        )
+        self.item = PrescriptionItem.objects.create(
+            prescription=self.prescription, drug=self.drug, quantity=20,
+            dosage="1 tablet", frequency="3x daily", duration="5 days",
+        )
+        self.client.login(username="pharm1", password="pass1234")
+
+    def test_non_pharmacist_denied(self):
+        User.objects.create_user(username="nurse1", password="pass1234", role=User.Role.NURSE)
+        self.client.logout()
+        self.client.login(username="nurse1", password="pass1234")
+
+        response = self.client.get(reverse("pharmacy_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_dispense_deducts_fefo_across_batches(self):
+        near_batch = Stock.objects.create(
+            drug=self.drug, quantity=5, expiry_date=timezone.localdate() + timedelta(days=10),
+            batch_number="NEAR",
+        )
+        far_batch = Stock.objects.create(
+            drug=self.drug, quantity=30, expiry_date=timezone.localdate() + timedelta(days=200),
+            batch_number="FAR",
+        )
+
+        response = self.client.post(
+            reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk])
+        )
+
+        self.assertRedirects(response, reverse("prescription_detail", args=[self.visit.pk]))
+        near_batch.refresh_from_db()
+        far_batch.refresh_from_db()
+        self.item.refresh_from_db()
+
+        self.assertEqual(near_batch.quantity, 0)
+        self.assertEqual(far_batch.quantity, 15)
+        self.assertTrue(self.item.dispensed)
+        self.assertEqual(self.item.dispensed_by, self.pharmacist)
+        self.assertEqual(
+            StockTransaction.objects.filter(
+                drug=self.drug, type=StockTransaction.TransactionType.OUT
+            ).count(),
+            1,
+        )
+
+    def test_insufficient_stock_rejects_dispense(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=3, expiry_date=timezone.localdate() + timedelta(days=10),
+            batch_number="ONLY",
+        )
+
+        self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
+
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.dispensed)
+        self.assertEqual(Stock.objects.get(batch_number="ONLY").quantity, 3)
+        self.assertFalse(StockTransaction.objects.filter(drug=self.drug).exists())
+
+    def test_dispensing_all_items_completes_visit(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=100, expiry_date=timezone.localdate() + timedelta(days=30),
+            batch_number="B1",
+        )
+
+        self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
+
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.COMPLETED)
+
+    def test_dispensing_one_of_two_items_keeps_visit_waiting(self):
+        other_drug = Drug.objects.create(
+            name="Paracetamol", category="Analgesic", strength="500mg", unit_price=2
+        )
+        other_item = PrescriptionItem.objects.create(
+            prescription=self.prescription, drug=other_drug, quantity=10,
+            dosage="1 tablet", frequency="once daily", duration="3 days",
+        )
+        Stock.objects.create(
+            drug=self.drug, quantity=100, expiry_date=timezone.localdate() + timedelta(days=30),
+            batch_number="B1",
+        )
+        # No stock created for other_drug — that item cannot be dispensed yet.
+
+        self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
+
+        self.visit.refresh_from_db()
+        other_item.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.WAITING_PHARMACY)
+        self.assertFalse(other_item.dispensed)
+
+    def test_already_dispensed_item_cannot_be_dispensed_again(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=100, expiry_date=timezone.localdate() + timedelta(days=30),
+            batch_number="B1",
+        )
+        self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
+        stock_after_first = Stock.objects.get(batch_number="B1").quantity
+
+        self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
+
+        self.assertEqual(Stock.objects.get(batch_number="B1").quantity, stock_after_first)
+        self.assertEqual(
+            StockTransaction.objects.filter(drug=self.drug).count(), 1
+        )
+
+    def test_cannot_dispense_when_visit_not_awaiting_pharmacy(self):
+        self.visit.status = Visit.Status.WAITING_DOCTOR
+        self.visit.save(update_fields=["status"])
+        Stock.objects.create(
+            drug=self.drug, quantity=100, expiry_date=timezone.localdate() + timedelta(days=30),
+            batch_number="B1",
+        )
+
+        detail_response = self.client.get(reverse("prescription_detail", args=[self.visit.pk]))
+        self.assertEqual(detail_response.status_code, 403)
+
+        self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.dispensed)

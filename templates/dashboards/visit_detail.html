@@ -131,12 +131,13 @@
 			{% if prescription.items.all %}
 				<table>
 					<thead>
-						<tr><th>Drug</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+						<tr><th>Drug</th><th>Qty</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
 					</thead>
 					<tbody>
 						{% for item in prescription.items.all %}
 							<tr>
 								<td>{{ item.drug.name }} {{ item.drug.strength }}</td>
+								<td>{{ item.quantity }}</td>
 								<td>{{ item.dosage }}</td>
 								<td>{{ item.frequency }}</td>
 								<td>{{ item.duration }}</td>

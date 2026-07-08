@@ -1,244 +1,54 @@
-<!DOCTYPE html>
+{% load static %}
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pharmacy Dashboard</title>
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f4f7fb;
-            color: #2d3a4b;
-        }
-        .dashboard {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 24px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 28px;
-        }
-        .header .summary {
-            color: #5b6a82;
-            font-size: 14px;
-        }
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .card {
-            background: #ffffff;
-            border-radius: 12px;
-            padding: 18px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-        }
-        .card h2 {
-            margin: 0 0 10px;
-            font-size: 18px;
-            color: #28323d;
-        }
-        .card .value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #0f4c81;
-        }
-        .card .label {
-            font-size: 13px;
-            color: #687285;
-            margin-top: 6px;
-        }
-        .section {
-            background: #ffffff;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-            margin-bottom: 24px;
-        }
-        .section h3 {
-            margin-top: 0;
-            font-size: 20px;
-            color: #28323d;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 16px;
-        }
-        thead {
-            background: #f7f9fc;
-        }
-        th, td {
-            text-align: left;
-            padding: 12px 14px;
-            border-bottom: 1px solid #edf1f6;
-        }
-        th {
-            font-size: 13px;
-            color: #556076;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-        }
-        tr:hover {
-            background: #fbfdff;
-        }
-        .status {
-            display: inline-block;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            color: #ffffff;
-        }
-        .status.low {
-            background: #f06b6b;
-        }
-        .status.medium {
-            background: #f2a23b;
-        }
-        .status.in-stock {
-            background: #28a745;
-        }
-        .alert-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .alert-list li {
-            padding: 12px 0;
-            border-bottom: 1px solid #edf1f6;
-        }
-        .alert-list li:last-child {
-            border-bottom: none;
-        }
-        .alert-title {
-            margin: 0 0 6px;
-            font-weight: 600;
-            color: #1f2b3a;
-        }
-        .alert-text {
-            margin: 0;
-            font-size: 14px;
-            color: #5f6d84;
-        }
-    </style>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Pharmacy Dashboard</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
 </head>
 <body>
-    <div class="dashboard">
-        <div class="header">
-            <div>
-                <h1>Pharmacy Dashboard</h1>
-                <p class="summary">Live view of stock levels, prescriptions, and supply requests for the hospital pharmacy.</p>
-            </div>
-        </div>
+	<header>
+		<h1>Pharmacy — Dashboard</h1>
+		<div class="header-actions">
+			<span class="muted">{{ request.user.get_full_name|default:request.user.username }}</span>
+			<a class="btn-ghost" href="{% url 'logout' %}">Log out</a>
+		</div>
+	</header>
 
-        <div class="cards">
-            <div class="card">
-                <h2>Total Medications</h2>
-                <div class="value">1,382</div>
-                <div class="label">Active medicine items in inventory</div>
-            </div>
-            <div class="card">
-                <h2>Low Stock Alerts</h2>
-                <div class="value">8</div>
-                <div class="label">Medications below reorder threshold</div>
-            </div>
-            <div class="card">
-                <h2>Pending Orders</h2>
-                <div class="value">14</div>
-                <div class="label">Requests awaiting fulfillment</div>
-            </div>
-            <div class="card">
-                <h2>Dispensed Today</h2>
-                <div class="value">462</div>
-                <div class="label">Medication items dispensed today</div>
-            </div>
-        </div>
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
 
-        <div class="section">
-            <h3>Medication Inventory</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Drug Name</th>
-                        <th>Category</th>
-                        <th>Stock</th>
-                        <th>Unit</th>
-                        <th>Status</th>
-                        <th>Reorder By</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Amoxicillin 500mg</td>
-                        <td>Antibiotic</td>
-                        <td>320</td>
-                        <td>Capsules</td>
-                        <td><span class="status in-stock">In Stock</span></td>
-                        <td>2026-08-14</td>
-                    </tr>
-                    <tr>
-                        <td>Metformin 850mg</td>
-                        <td>Endocrine</td>
-                        <td>84</td>
-                        <td>Tablets</td>
-                        <td><span class="status medium">Reorder Soon</span></td>
-                        <td>2026-07-18</td>
-                    </tr>
-                    <tr>
-                        <td>Furosemide 40mg</td>
-                        <td>Diuretic</td>
-                        <td>22</td>
-                        <td>Tablets</td>
-                        <td><span class="status low">Low Stock</span></td>
-                        <td>2026-07-12</td>
-                    </tr>
-                    <tr>
-                        <td>Paracetamol 500mg</td>
-                        <td>Analgesic</td>
-                        <td>540</td>
-                        <td>Tablets</td>
-                        <td><span class="status in-stock">In Stock</span></td>
-                        <td>2026-09-02</td>
-                    </tr>
-                    <tr>
-                        <td>Insulin Glargine</td>
-                        <td>Hormones</td>
-                        <td>18</td>
-                        <td>Vials</td>
-                        <td><span class="status low">Low Stock</span></td>
-                        <td>2026-07-10</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="section">
-            <h3>Recent Supply Requests</h3>
-            <ul class="alert-list">
-                <li>
-                    <p class="alert-title">Order #PH-1027</p>
-                    <p class="alert-text">Request for 120 units of Ondansetron and 40 units of Morphine injection.</p>
-                </li>
-                <li>
-                    <p class="alert-title">Order #PH-1028</p>
-                    <p class="alert-text">Replenishment needed for Amoxicillin and Metformin with priority shipping.</p>
-                </li>
-                <li>
-                    <p class="alert-title">Order #PH-1029</p>
-                    <p class="alert-text">Urgent restock of Furosemide and Insulin Glargine for emergency ward.</p>
-                </li>
-            </ul>
-        </div>
-
-    </div>
+		<div class="card">
+			<div class="card-header">
+				<strong>Prescriptions awaiting dispensing</strong>
+			</div>
+			{% if visits %}
+				<table>
+					<thead>
+						<tr><th>Patient</th><th>Doctor</th><th>Waiting since</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for visit in visits %}
+							<tr>
+								<td>{{ visit.patient.full_name }}</td>
+								<td>{{ visit.doctor.get_full_name|default:"—" }}</td>
+								<td>{{ visit.visit_date|date:"Y-m-d H:i" }}</td>
+								<td><a class="btn" href="{% url 'prescription_detail' visit.pk %}">View prescription</a></td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No prescriptions waiting.</p>
+			{% endif %}
+		</div>
+	</div>
 </body>
 </html>
