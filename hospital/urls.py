@@ -13,7 +13,6 @@ urlpatterns = [
     path("patient/", views.patient_dashboard, name="patient_dashboard"),
     path("", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
-    path("patient/", views.patient_dashboard, name="patient_dashboard"),
     path("appointments/", views.appointment_list, name="appointment_list"),
     path("appointments_create/", views.appointment_create, name="appointment_create"),
     path("prescription_refill/", views.prescription_refill, name="prescription_refill"),
