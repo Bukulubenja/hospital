@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Dashboard - Hospital Management System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0066cc;
+            --primary-light: #e6f0ff;
+            --secondary: #00b4d8;
+            --success: #06d6a0;
+            --warning: #ffa500;
+            --danger: #ef476f;
+            --dark: #1a1a2e;
+            --light: #f8f9fa;
+            --border: #e0e5ed;
+            --text-primary: #2c3e50;
+            --text-secondary: #7f8c8d;
+            --glass: rgba(255, 255, 255, 0.7);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.15);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e8f0f7 100%);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        body.dark-mode {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+        }
+
+        .container-main {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 280px;
+            background: white;
+            box-shadow: var(--shadow-md);
+            padding: 2rem 1.5rem;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            transition: var(--transition);
+            z-index: 1000;
+        }
+
+        body.dark-mode .sidebar {
+            background: #1e293b;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            animation: slideInLeft 0.6s ease-out;
+        }
+
+        .nav-menu {
+            list-style: none;
+            margin-bottom: 3rem;
+        }
+
+        .nav-item {
+            margin: 0.5rem 0;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 0.5rem;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        body.dark-mode .nav-link {
+            color: #a0aec0;
+        }
+
+        .nav-link:hover {
+            background: var(--primary-light);
+            color: var(--primary);
+            transform: translateX(4px);
+        }
+
+        .nav-link.active {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .nav-link i {
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            padding: 2rem;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header-left h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-left p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .search-box {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            border: 2px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 0.95rem;
+            background: white;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .search-box input {
+            background: #2d3748;
+            border-color: #4a5568;
+            color: #e0e0e0;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        .header-icons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .icon-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--light);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-primary);
+            transition: var(--transition);
+            position: relative;
+            font-size: 1.1rem;
+        }
+
+        body.dark-mode .icon-btn {
+            background: #2d3748;
+            color: #e0e0e0;
+        }
+
+        .icon-btn:hover {
+            transform: scale(1.05);
+            box-shadow: var(--shadow-md);
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            background: var(--danger);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* Emergency Button */
+        .emergency-btn {
+            background: linear-gradient(135deg, var(--danger), #ff6b6b);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .emergency-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .emergency-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(239, 71, 111, 0.4);
+        }
+
+        .emergency-btn:active {
+            transform: scale(0.98);
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+            border: 1px solid transparent;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        body.dark-mode .card {
+            background: #1e293b;
+            border-color: #334155;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary-light);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        body.dark-mode .card-header {
+            border-color: #334155;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .card-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .card-icon.primary { background: var(--primary-light); color: var(--primary); }
+        .card-icon.success { background: #d4f5ea; color: var(--success); }
+        .card-icon.warning { background: #fff4e6; color: var(--warning); }
+        .card-icon.danger { background: #ffe6f0; color: var(--danger); }
+
+        /* Patient Overview */
+        .patient-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-box {
+            background: var(--primary-light);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .info-box {
+            background: rgba(0, 102, 204, 0.1);
+        }
+
+        .info-box:hover {
+            transform: scale(1.05);
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .badge-success {
+            background: #d4f5ea;
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: #fff4e6;
+            color: var(--warning);
+        }
+
+        .badge-danger {
+            background: #ffe6f0;
+            color: var(--danger);
+        }
+
+        body.dark-mode .badge-success { background: rgba(6, 214, 160, 0.1); }
+        body.dark-mode .badge-warning { background: rgba(255, 165, 0, 0.1); }
+        body.dark-mode .badge-danger { background: rgba(239, 71, 111, 0.1); }
+
+        /* Medical History Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 2rem;
+            animation: slideIn 0.6s ease-out;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -2rem;
+            top: 0;
+            width: 12px;
+            height: 12px;
+            background: var(--primary);
+            border-radius: 50%;
+            border: 3px solid white;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .timeline-item::before {
+            border-color: #1e293b;
+        }
+
+        .timeline-item:hover::before {
+            transform: scale(1.3);
+            box-shadow: 0 0 0 8px var(--primary-light);
+        }
+
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: -1.97rem;
+            top: 12px;
+            width: 2px;
+            height: calc(100% - 12px);
+            background: var(--border);
+        }
+
+        body.dark-mode .timeline-item::after {
+            background: #334155;
+        }
+
+        .timeline-item:last-child::after {
+            display: none;
+        }
+
+        .timeline-content {
+            background: var(--light);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .timeline-content {
+            background: rgba(45, 55, 72, 0.5);
+        }
+
+        .timeline-date {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .timeline-title {
+            font-weight: 600;
+            margin: 0.25rem 0;
+        }
+
+        .timeline-description {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Appointments List */
+        .appointment-item {
+            background: var(--light);
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--primary);
+            transition: var(--transition);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        body.dark-mode .appointment-item {
+            background: rgba(45, 55, 72, 0.5);
+        }
+
+        .appointment-item:hover {
+            transform: translateX(8px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .appointment-info {
+            flex: 1;
+        }
+
+        .appointment-doctor {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .appointment-time {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .appointment-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0052a3;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary {
+            background: var(--light);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        body.dark-mode .btn-secondary {
+            background: rgba(45, 55, 72, 0.5);
+            border-color: #334155;
+            color: #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        /* Charts Section */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 1.5rem 0;
+        }
+
+        .placeholder-chart {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--primary-light) 0%, rgba(0, 180, 216, 0.05) 100%);
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        body.dark-mode .placeholder-chart {
+            background: linear-gradient(135deg, rgba(0, 102, 204, 0.1) 0%, rgba(0, 180, 216, 0.05) 100%);
+        }
+
+        /* Prescription Item */
+        .prescription-item {
+            background: var(--light);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.75rem;
+            border-left: 4px solid var(--success);
+        }
+
+        body.dark-mode .prescription-item {
+            background: rgba(45, 55, 72, 0.5);
+        }
+
+        .prescription-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .prescription-details {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .prescription-days-left {
+            display: inline-block;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            background: var(--warning);
+            color: white;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.3rem;
+        }
+
+        /* Billing Table */
+        .billing-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .billing-table th {
+            background: var(--primary-light);
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--primary);
+            border-radius: 0.5rem 0.5rem 0 0;
+        }
+
+        body.dark-mode .billing-table th {
+            background: rgba(0, 102, 204, 0.1);
+        }
+
+        .billing-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        body.dark-mode .billing-table td {
+            border-color: #334155;
+        }
+
+        .billing-table tr:hover {
+            background: var(--light);
+        }
+
+        body.dark-mode .billing-table tr:hover {
+            background: rgba(45, 55, 72, 0.5);
+        }
+
+        /* Message Item */
+        .message-item {
+            background: var(--light);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.75rem;
+            border-left: 4px solid var(--secondary);
+            transition: var(--transition);
+        }
+
+        body.dark-mode .message-item {
+            background: rgba(45, 55, 72, 0.5);
+        }
+
+        .message-item:hover {
+            transform: translateX(4px);
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-from {
+            font-weight: 600;
+        }
+
+        .message-time {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .message-preview {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Notification Center */
+        .notification-item {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.75rem;
+            background: var(--light);
+            border-left: 4px solid var(--primary);
+            display: flex;
+            gap: 1rem;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .notification-item {
+            background: rgba(45, 55, 72, 0.5);
+        }
+
+        .notification-item.unread {
+            background: var(--primary-light);
+        }
+
+        .notification-icon {
+            font-size: 1.25rem;
+            width: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .notification-description {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Queue Status */
+        .queue-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .queue-item {
+            background: linear-gradient(135deg, var(--primary-light), rgba(0, 102, 204, 0.05));
+            padding: 1rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .queue-item {
+            background: linear-gradient(135deg, rgba(0, 102, 204, 0.1), rgba(0, 102, 204, 0.05));
+        }
+
+        .queue-item:hover {
+            transform: scale(1.05);
+        }
+
+        .queue-number {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .queue-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        /* Accessibility Mode */
+        .accessibility-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .accessibility-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--light);
+            border: 2px solid var(--border);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            font-size: 1rem;
+        }
+
+        body.dark-mode .accessibility-btn {
+            background: #2d3748;
+            border-color: #4a5568;
+        }
+
+        .accessibility-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        /* Animations */
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: var(--shadow-lg);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        body.dark-mode .modal-content {
+            background: #1e293b;
+        }
+
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: var(--transition);
+        }
+
+        .modal-close:hover {
+            color: var(--primary);
+        }
+
+        .modal-body {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        body.dark-mode .form-input {
+            background: #2d3748;
+            border-color: #4a5568;
+            color: #e0e0e0;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .btn-lg {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0052a3;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-cancel {
+            background: var(--light);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        body.dark-mode .btn-cancel {
+            background: #2d3748;
+            border-color: #4a5568;
+            color: #e0e0e0;
+        }
+
+        .btn-cancel:hover {
+            background: var(--border);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .search-box {
+                width: 100%;
+            }
+
+            .header-left h1 {
+                font-size: 1.5rem;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                transform: translateX(0);
+                padding: 1rem;
+            }
+
+            .card {
+                padding: 1rem;
+            }
+
+            .patient-overview {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-main">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-heartbeat"></i>
+                MediCare
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#dashboard" class="nav-link active" data-section="dashboard">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#appointments" class="nav-link" data-section="appointments">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span>Appointments</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#medical-history" class="nav-link" data-section="medical-history">
+                        <i class="fas fa-file-medical"></i>
+                        <span>Medical Records</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#lab-results" class="nav-link" data-section="lab-results">
+                        <i class="fas fa-flask"></i>
+                        <span>Lab Results</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#prescriptions" class="nav-link" data-section="prescriptions">
+                        <i class="fas fa-prescription"></i>
+                        <span>Prescriptions</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#billing" class="nav-link" data-section="billing">
+                        <i class="fas fa-receipt"></i>
+                        <span>Billing & Payments</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#messages" class="nav-link" data-section="messages">
+                        <i class="fas fa-envelope"></i>
+                        <span>Messages</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#telemedicine" class="nav-link" data-section="telemedicine">
+                        <i class="fas fa-video"></i>
+                        <span>Telemedicine</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div style="padding-top: 2rem; border-top: 2px solid var(--border);">
+                <li class="nav-item" style="list-style: none;">
+                    <a href="#profile" class="nav-link" data-section="profile">
+                        <i class="fas fa-user-circle"></i>
+                        <span>My Profile</span>
+                    </a>
+                </li>
+                <li class="nav-item" style="list-style: none;">
+                    <a href="#settings" class="nav-link" data-section="settings">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </a>
+                </li>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <div class="header-left">
+                    <h1>Welcome back, benjamin</h1>
+                    <p>Here's your health overview</p>
+                </div>
+
+                <div class="header-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Search records, doctors...">
+                    </div>
+
+                    <div class="header-icons">
+                        <button class="icon-btn" title="Notifications">
+                            <i class="fas fa-bell"></i>
+                            <span class="notification-badge">3</span>
+                        </button>
+                        <button class="icon-btn" title="Messages">
+                            <i class="fas fa-envelope"></i>
+                        </button>
+                        <button class="icon-btn" id="theme-toggle" title="Toggle Theme">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                    </div>
+
+                    <button class="emergency-btn pulse" id="emergency-btn">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Emergency
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard-section">
+                <!-- Patient Overview Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-user-md"></i>
+                            </div>
+                            Patient Overview
+                        </h2>
+                        <span class="status-badge badge-success">
+                            <i class="fas fa-check-circle"></i> Active
+                        </span>
+                    </div>
+
+                    <div class="patient-overview">
+                        <div class="info-box">
+                            <div class="info-label">Medical ID</div>
+                            <div class="info-value">PAT-2024-001</div>
+                        </div>
+                        <div class="info-box">
+                            <div class="info-label">Blood Group</div>
+                            <div class="info-value">O+</div>
+                        </div>
+                        <div class="info-box">
+                            <div class="info-label">Allergies</div>
+                            <div class="info-value">Penicillin</div>
+                        </div>
+                        <div class="info-box">
+                            <div class="info-label">Last Visit</div>
+                            <div class="info-value">2 weeks</div>
+                        </div>
+                    </div>
+
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">
+                        <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>
+                        Status: All vital signs normal. Continue current medication routine.
+                    </p>
+                </div>
+
+                <!-- Dashboard Grid -->
+                <div class="dashboard-grid">
+                    <!-- Upcoming Appointments -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <div class="card-icon primary">
+                                    <i class="fas fa-calendar-check"></i>
+                                </div>
+                                Upcoming
+                            </h2>
+                            <a href="#" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">View All</a>
+                        </div>
+
+                        <div class="appointment-item">
+                            <div class="appointment-info">
+                                <div class="appointment-doctor">Dr. Sarah Johnson</div>
+                                <div class="appointment-time">
+                                    <i class="fas fa-clock"></i> Tomorrow, 10:30 AM
+                                </div>
+                                <div class="appointment-time" style="margin-top: 0.25rem;">
+                                    <i class="fas fa-stethoscope"></i> General Checkup
+                                </div>
+                            </div>
+                            <div class="appointment-actions">
+                                <button class="btn-sm btn-primary">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="appointment-item">
+                            <div class="appointment-info">
+                                <div class="appointment-doctor">Dr. Michael Chen</div>
+                                <div class="appointment-time">
+                                    <i class="fas fa-clock"></i> Friday, 2:00 PM
+                                </div>
+                                <div class="appointment-time" style="margin-top: 0.25rem;">
+                                    <i class="fas fa-heart"></i> Cardiology Follow-up
+                                </div>
+                            </div>
+                            <div class="appointment-actions">
+                                <button class="btn-sm btn-primary">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <div class="card-icon success">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                Quick Actions
+                            </h2>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <button class="btn-sm btn-primary" style="justify-content: center; padding: 1rem;">
+                                <i class="fas fa-plus"></i> Book Appointment
+                            </button>
+                            <button class="btn-sm btn-secondary" style="justify-content: center; padding: 1rem;">
+                                <i class="fas fa-sync"></i> Refill Prescription
+                            </button>
+                            <button class="btn-sm btn-primary" style="justify-content: center; padding: 1rem;">
+                                <i class="fas fa-video"></i> Video Consultation
+                            </button>
+                            <button class="btn-sm btn-secondary" style="justify-content: center; padding: 1rem;">
+                                <i class="fas fa-file-download"></i> Download Records
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Vital Signs -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <div class="card-icon warning">
+                                    <i class="fas fa-heartbeat"></i>
+                                </div>
+                                Vital Signs
+                            </h2>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 1.75rem; font-weight: 700; color: var(--primary); margin-bottom: 0.25rem;">120/80</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Blood Pressure</div>
+                                <span class="status-badge badge-success" style="margin-top: 0.5rem; display: inline-block;">Normal</span>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 1.75rem; font-weight: 700; color: var(--primary); margin-bottom: 0.25rem;">72</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Heart Rate (bpm)</div>
+                                <span class="status-badge badge-success" style="margin-top: 0.5rem; display: inline-block;">Healthy</span>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 1.75rem; font-weight: 700; color: var(--primary); margin-bottom: 0.25rem;">98.6°F</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Temperature</div>
+                                <span class="status-badge badge-success" style="margin-top: 0.5rem; display: inline-block;">Normal</span>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 1.75rem; font-weight: 700; color: var(--primary); margin-bottom: 0.25rem;">98%</div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">Oxygen Level</div>
+                                <span class="status-badge badge-success" style="margin-top: 0.5rem; display: inline-block;">Optimal</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lab Results Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-flask"></i>
+                            </div>
+                            Recent Lab Results
+                        </h2>
+                        <a href="#" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">View All Results</a>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div style="background: var(--light); padding: 1rem; border-radius: 0.5rem; border-left: 4px solid var(--success);">
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Complete Blood Count</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Test Date: Jan 15, 2024</div>
+                            <span class="status-badge badge-success">Normal Range</span>
+                        </div>
+
+                        <div style="background: var(--light); padding: 1rem; border-radius: 0.5rem; border-left: 4px solid var(--warning);">
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Lipid Profile</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Test Date: Jan 15, 2024</div>
+                            <span class="status-badge badge-warning">Needs Review</span>
+                        </div>
+
+                        <div style="background: var(--light); padding: 1rem; border-radius: 0.5rem; border-left: 4px solid var(--success);">
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Blood Glucose</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Test Date: Jan 10, 2024</div>
+                            <span class="status-badge badge-success">Normal Range</span>
+                        </div>
+                    </div>
+
+                    <div class="chart-container">
+                        <div class="placeholder-chart">
+                            <i class="fas fa-chart-area" style="font-size: 3rem; opacity: 0.2; margin-right: 1rem;"></i>
+                            <div>
+                                <div style="font-weight: 600;">Lab Trend Analysis</div>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Visual representation of lab values over time</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Medical History Timeline -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-history"></i>
+                            </div>
+                            Medical History
+                        </h2>
+                        <select style="padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 0.5rem; background: white; cursor: pointer;">
+                            <option>All Departments</option>
+                            <option>Cardiology</option>
+                            <option>General</option>
+                            <option>Neurology</option>
+                        </select>
+                    </div>
+
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-content">
+                                <div class="timeline-date">January 20, 2024</div>
+                                <div class="timeline-title">General Checkup</div>
+                                <div class="timeline-description">Routine health screening - All vitals normal, blood work pending review</div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <div class="timeline-content">
+                                <div class="timeline-date">January 10, 2024</div>
+                                <div class="timeline-title">Cardiology Consultation</div>
+                                <div class="timeline-description">Follow-up on hypertension management, medication adjusted</div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <div class="timeline-content">
+                                <div class="timeline-date">December 28, 2023</div>
+                                <div class="timeline-title">Lab Tests</div>
+                                <div class="timeline-description">Annual physical exam and comprehensive blood work completed</div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <div class="timeline-content">
+                                <div class="timeline-date">December 15, 2023</div>
+                                <div class="timeline-title">Emergency Visit</div>
+                                <div class="timeline-description">Minor injury treatment, discharged same day with care instructions</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Prescriptions Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon success">
+                                <i class="fas fa-prescription"></i>
+                            </div>
+                            Active Prescriptions
+                        </h2>
+                        <a href="#" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">Request Refill</a>
+                    </div>
+
+                    <div class="prescription-item">
+                        <div class="prescription-name">Lisinopril 10mg</div>
+                        <div class="prescription-details">
+                            <i class="fas fa-pills"></i> Once daily in the morning
+                        </div>
+                        <div class="prescription-days-left">
+                            <i class="fas fa-hourglass-end"></i> 15 days left
+                        </div>
+                    </div>
+
+                    <div class="prescription-item">
+                        <div class="prescription-name">Atorvastatin 20mg</div>
+                        <div class="prescription-details">
+                            <i class="fas fa-pills"></i> Once daily at bedtime
+                        </div>
+                        <div class="prescription-days-left">
+                            <i class="fas fa-hourglass-end"></i> 22 days left
+                        </div>
+                    </div>
+
+                    <div class="prescription-item">
+                        <div class="prescription-name">Metformin 500mg</div>
+                        <div class="prescription-details">
+                            <i class="fas fa-pills"></i> Twice daily with meals
+                        </div>
+                        <div class="prescription-days-left" style="background: var(--danger);">
+                            <i class="fas fa-exclamation"></i> 3 days left - REFILL SOON
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Queue Status -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon warning">
+                                <i class="fas fa-list"></i>
+                            </div>
+                            Smart Queue Prediction
+                        </h2>
+                    </div>
+
+                    <div class="queue-status">
+                        <div class="queue-item">
+                            <div class="queue-number">12</div>
+                            <div class="queue-label">Current Queue</div>
+                        </div>
+                        <div class="queue-item">
+                            <div class="queue-number">18</div>
+                            <div class="queue-label">Est. Wait Time</div>
+                        </div>
+                        <div class="queue-item">
+                            <div class="queue-number">5</div>
+                            <div class="queue-label">Your Position</div>
+                        </div>
+                        <div class="queue-item">
+                            <div class="queue-number">2:45</div>
+                            <div class="queue-label">Est. Your Time</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-receipt"></i>
+                            </div>
+                            Billing & Payments
+                        </h2>
+                        <a href="#" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">View All Invoices</a>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div style="background: linear-gradient(135deg, #d4f5ea, rgba(6, 214, 160, 0.1)); padding: 1rem; border-radius: 0.75rem; text-align: center;">
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Paid</div>
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--success);">$2,450</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #fff4e6, rgba(255, 165, 0, 0.1)); padding: 1rem; border-radius: 0.75rem; text-align: center;">
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Pending</div>
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--warning);">$850</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #ffe6f0, rgba(239, 71, 111, 0.1)); padding: 1rem; border-radius: 0.75rem; text-align: center;">
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Due</div>
+                            <div style="font-size: 1.5rem; font-weight: 700; color: var(--danger);">$325</div>
+                        </div>
+                    </div>
+
+                    <table class="billing-table">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Cardiology Consultation</td>
+                                <td>$250</td>
+                                <td>Jan 15, 2024</td>
+                                <td><span class="status-badge badge-success">Paid</span></td>
+                            </tr>
+                            <tr>
+                                <td>Lab Tests</td>
+                                <td>$180</td>
+                                <td>Jan 10, 2024</td>
+                                <td><span class="status-badge badge-success">Paid</span></td>
+                            </tr>
+                            <tr>
+                                <td>General Checkup</td>
+                                <td>$150</td>
+                                <td>Jan 20, 2024</td>
+                                <td><span class="status-badge badge-warning">Pending</span></td>
+                            </tr>
+                            <tr>
+                                <td>Prescription Refill</td>
+                                <td>$45</td>
+                                <td>Jan 18, 2024</td>
+                                <td><span class="status-badge badge-danger">Due</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Messages Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon secondary">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            Secure Messages
+                        </h2>
+                        <a href="#" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">View All</a>
+                    </div>
+
+                    <div class="message-item">
+                        <div class="message-header">
+                            <div class="message-from">Dr. Sarah Johnson</div>
+                            <div class="message-time">2 hours ago</div>
+                        </div>
+                        <div class="message-preview">Your lab results are ready. Please schedule a follow-up appointment to discuss findings.</div>
+                    </div>
+
+                    <div class="message-item">
+                        <div class="message-header">
+                            <div class="message-from">Pharmacy - MediCare</div>
+                            <div class="message-time">1 day ago</div>
+                        </div>
+                        <div class="message-preview">Your prescription for Lisinopril is ready for pickup. Visit us anytime during business hours.</div>
+                    </div>
+
+                    <div class="message-item">
+                        <div class="message-header">
+                            <div class="message-from">Hospital Reception</div>
+                            <div class="message-time">3 days ago</div>
+                        </div>
+                        <div class="message-preview">Appointment confirmation for Dr. Michael Chen on Friday at 2:00 PM. Please arrive 10 minutes early.</div>
+                    </div>
+                </div>
+
+                <!-- Notifications Center -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-bell"></i>
+                            </div>
+                            Notifications
+                        </h2>
+                        <button class="btn-sm btn-secondary">Mark All as Read</button>
+                    </div>
+
+                    <div class="notification-item unread">
+                        <div class="notification-icon">
+                            <i class="fas fa-flask" style="color: var(--primary);"></i>
+                        </div>
+                        <div class="notification-content">
+                            <div class="notification-title">Lab Results Available</div>
+                            <div class="notification-description">Your recent blood work results are now available for review.</div>
+                        </div>
+                    </div>
+
+                    <div class="notification-item unread">
+                        <div class="notification-icon">
+                            <i class="fas fa-hourglass-end" style="color: var(--warning);"></i>
+                        </div>
+                        <div class="notification-content">
+                            <div class="notification-title">Prescription Refill Reminder</div>
+                            <div class="notification-description">Metformin 500mg will run out in 3 days. Click to request a refill.</div>
+                        </div>
+                    </div>
+
+                    <div class="notification-item unread">
+                        <div class="notification-icon">
+                            <i class="fas fa-calendar-check" style="color: var(--success);"></i>
+                        </div>
+                        <div class="notification-content">
+                            <div class="notification-title">Appointment Tomorrow</div>
+                            <div class="notification-description">Reminder: You have an appointment with Dr. Sarah Johnson tomorrow at 10:30 AM.</div>
+                        </div>
+                    </div>
+
+                    <div class="notification-item">
+                        <div class="notification-icon">
+                            <i class="fas fa-user-md" style="color: #9b59b6;"></i>
+                        </div>
+                        <div class="notification-content">
+                            <div class="notification-title">New Doctor Message</div>
+                            <div class="notification-description">Dr. Michael Chen sent you a message regarding your follow-up.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Telemedicine Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon success">
+                                <i class="fas fa-video"></i>
+                            </div>
+                            Telemedicine
+                        </h2>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                        <div style="background: linear-gradient(135deg, #e6f0ff, rgba(0, 102, 204, 0.05)); padding: 1.5rem; border-radius: 0.75rem; text-align: center;">
+                            <i class="fas fa-video" style="font-size: 3rem; color: var(--primary); margin-bottom: 1rem;"></i>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Start Video Consultation</div>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">Connect with available doctors instantly</p>
+                            <button class="btn-sm btn-primary" style="justify-content: center; width: 100%;">
+                                <i class="fas fa-phone"></i> Start Call
+                            </button>
+                        </div>
+
+                        <div style="background: linear-gradient(135deg, #d4f5ea, rgba(6, 214, 160, 0.05)); padding: 1.5rem; border-radius: 0.75rem; text-align: center;">
+                            <i class="fas fa-comment-dots" style="font-size: 3rem; color: var(--success); margin-bottom: 1rem;"></i>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Chat with Doctor</div>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">Send messages without video call</p>
+                            <button class="btn-sm btn-primary" style="justify-content: center; width: 100%; background: var(--success);">
+                                <i class="fas fa-comments"></i> Chat Now
+                            </button>
+                        </div>
+
+                        <div style="background: linear-gradient(135deg, #fff4e6, rgba(255, 165, 0, 0.05)); padding: 1.5rem; border-radius: 0.75rem; text-align: center;">
+                            <i class="fas fa-history" style="font-size: 3rem; color: var(--warning); margin-bottom: 1rem;"></i>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Consultation History</div>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">View past video calls and chats</p>
+                            <button class="btn-sm btn-primary" style="justify-content: center; width: 100%; background: var(--warning);">
+                                <i class="fas fa-list"></i> View History
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <div style="margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-secondary); border-top: 2px solid var(--border);">
+                <p style="margin-bottom: 0.5rem;">
+                    <i class="fas fa-shield-alt"></i> Your data is encrypted and secure
+                </p>
+                <p style="font-size: 0.85rem;">
+                    © 2024 MediCare Hospital Management System. All rights reserved.
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Emergency Modal -->
+    <div class="modal" id="emergency-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>
+                    <i class="fas fa-exclamation-circle" style="color: var(--danger); margin-right: 0.75rem;"></i>
+                    Emergency Alert
+                </h2>
+                <button class="modal-close" onclick="closeModal('emergency-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">Select the severity level of your emergency:</p>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer; margin-bottom: 0.75rem;">
+                        <input type="radio" name="severity" value="critical" style="margin-right: 0.75rem; cursor: pointer;"> 
+                        <span style="font-weight: 600;">🔴 Critical</span>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); margin-left: auto;">Life-threatening</span>
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; margin-bottom: 0.75rem;">
+                        <input type="radio" name="severity" value="urgent" style="margin-right: 0.75rem; cursor: pointer;"> 
+                        <span style="font-weight: 600;">🟠 Urgent</span>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); margin-left: auto;">Severe symptoms</span>
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="severity" value="moderate" style="margin-right: 0.75rem; cursor: pointer;"> 
+                        <span style="font-weight: 600;">🟡 Moderate</span>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); margin-left: auto;">Needs attention</span>
+                    </label>
+                </div>
+
+                <label style="display: flex; align-items: center; margin-top: 1rem; margin-bottom: 1rem; cursor: pointer;">
+                    <input type="checkbox" style="margin-right: 0.75rem; cursor: pointer;" id="share-location">
+                    <span>Share my location with hospital</span>
+                </label>
+
+                <div class="form-group">
+                    <label class="form-label">Additional Details</label>
+                    <textarea style="width: 100%; padding: 0.75rem; border: 2px solid var(--border); border-radius: 0.5rem; font-family: inherit; resize: vertical; min-height: 80px;" placeholder="Describe your emergency..."></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-lg btn-cancel" onclick="closeModal('emergency-modal')">Cancel</button>
+                <button class="btn-lg btn-primary" onclick="sendEmergencyAlert()">
+                    <i class="fas fa-paper-plane"></i> Send Alert
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme Toggle
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            const icon = themeToggle.querySelector('i');
+            if (body.classList.contains('dark-mode')) {
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+
+        // Load theme preference
+        if (localStorage.getItem('theme') === 'dark') {
+            body.classList.add('dark-mode');
+            themeToggle.querySelector('i').classList.add('fa-sun');
+            themeToggle.querySelector('i').classList.remove('fa-moon');
+        }
+
+        // Navigation
+        const navLinks = document.querySelectorAll('.nav-link');
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                navLinks.forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+            });
+        });
+
+        // Emergency Button
+        const emergencyBtn = document.getElementById('emergency-btn');
+        emergencyBtn.addEventListener('click', () => {
+            openModal('emergency-modal');
+        });
+
+        // Modal Functions
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+            body.style.overflow = 'hidden';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+            body.style.overflow = 'auto';
+        }
+
+        // Send Emergency Alert
+        function sendEmergencyAlert() {
+            const severity = document.querySelector('input[name="severity"]:checked')?.value;
+            const shareLocation = document.getElementById('share-location').checked;
+            
+            if (!severity) {
+                alert('Please select a severity level');
+                return;
+            }
+
+            // Simulate alert sending
+            alert(`Emergency alert sent!\nSeverity: ${severity.toUpperCase()}\nLocation sharing: ${shareLocation ? 'Enabled' : 'Disabled'}\n\nEmergency teams have been notified.`);
+            closeModal('emergency-modal');
+        }
+
+        // Close modal on outside click
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal(modal.id);
+                }
+            });
+        });
+
+        // Smooth scroll behavior
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

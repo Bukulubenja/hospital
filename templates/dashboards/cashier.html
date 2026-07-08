@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Cashier Dashboard</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #f4f7fb; color: #2c3e50; }
+        .header { background: #1d72b8; color: white; padding: 24px 32px; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .header p { margin: 6px 0 0; opacity: 0.85; }
+        .container { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 12px 28px rgba(15, 30, 50, 0.06); }
+        .card h2 { margin: 0 0 12px; font-size: 16px; color: #34495e; }
+        .card .value { font-size: 32px; font-weight: 700; margin-bottom: 6px; }
+        .card small { color: #7f8c8d; }
+        .section-title { margin: 32px 0 16px; font-size: 20px; color: #34495e; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 720px; }
+        th, td { text-align: left; padding: 14px 12px; border-bottom: 1px solid #e7ecf2; }
+        th { background: #f9fbfd; color: #5d6d7e; font-weight: 600; }
+        tr:hover { background: #f7fbff; }
+        .status { padding: 6px 10px; border-radius: 999px; font-size: 12px; display: inline-block; }
+        .status-paid { background: #d4f8e8; color: #1b6b42; }
+        .status-pending { background: #fff4d6; color: #8c6500; }
+        .status-refund { background: #f9d5d5; color: #8d2626; }
+        .quick-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
+        .action { background: #1d72b8; color: white; padding: 14px 18px; border-radius: 10px; text-decoration: none; width: 220px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; }
+        .action.secondary { background: #34495e; }
+        .search-bar { width: 100%; display: flex; gap: 12px; margin-bottom: 16px; }
+        .search-bar input { flex: 1; padding: 12px 14px; border: 1px solid #dce3e8; border-radius: 10px; }
+        .search-bar button { padding: 12px 16px; border: none; background: #1d72b8; color: white; border-radius: 10px; cursor: pointer; }
+        @media (max-width: 640px) { .header, .container { padding-left: 16px; padding-right: 16px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Cashier Dashboard</h1>
+        <p>Hospital finance overview and transaction management for the cashier team.</p>
+    </div>
+    <div class="container">
+        <div class="grid">
+            <div class="card">
+                <h2>Today's Collections</h2>
+                <div class="value">$12,450</div>
+                <small>Amount collected from services and payments today</small>
+            </div>
+            <div class="card">
+                <h2>Pending Payments</h2>
+                <div class="value">$4,820</div>
+                <small>Payments awaiting clearance or processing</small>
+            </div>
+            <div class="card">
+                <h2>Receipts Issued</h2>
+                <div class="value">128</div>
+                <small>Invoices and receipts generated today</small>
+            </div>
+            <div class="card">
+                <h2>Patients Served</h2>
+                <div class="value">56</div>
+                <small>Patients who completed billing today</small>
+            </div>
+        </div>
+
+        <div class="section-title">Recent Transactions</div>
+        <div class="card">
+            <div class="search-bar">
+                <input type="text" placeholder="Search by patient name, invoice, or amount">
+                <button>Search</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Patient</th>
+                            <th>Department</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>INV-10234</td>
+                            <td>Maria Johnson</td>
+                            <td>Radiology</td>
+                            <td>$320.00</td>
+                            <td><span class="status status-paid">Paid</span></td>
+                            <td>Jul 7, 2026</td>
+                        </tr>
+                        <tr>
+                            <td>INV-10235</td>
+                            <td>Samuel Lee</td>
+                            <td>Pharmacy</td>
+                            <td>$78.50</td>
+                            <td><span class="status status-pending">Pending</span></td>
+                            <td>Jul 7, 2026</td>
+                        </tr>
+                        <tr>
+                            <td>INV-10236</td>
+                            <td>Olivia Patel</td>
+                            <td>Laboratory</td>
+                            <td>$115.75</td>
+                            <td><span class="status status-paid">Paid</span></td>
+                            <td>Jul 7, 2026</td>
+                        </tr>
+                        <tr>
+                            <td>INV-10237</td>
+                            <td>David Kim</td>
+                            <td>Outpatient</td>
+                            <td>$210.00</td>
+                            <td><span class="status status-refund">Refund</span></td>
+                            <td>Jul 7, 2026</td>
+                        </tr>
+                        <tr>
+                            <td>INV-10238</td>
+                            <td>Emma Roberts</td>
+                            <td>Surgery</td>
+                            <td>$1,850.00</td>
+                            <td><span class="status status-pending">Pending</span></td>
+                            <td>Jul 7, 2026</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section-title">Quick Actions</div>
+        <div class="quick-actions">
+            <a href="#" class="action">New Cash Receipt</a>
+            <a href="#" class="action secondary">Verify Payment</a>
+            <a href="#" class="action">Print Report</a>
+            <a href="#" class="action secondary">View Daily Summary</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,199 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Hospital Management System</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+
+<!-- Pinned version instead of @latest: an unpinned CDN script can change
+     under you without warning, which is a real risk on a page that's
+     advertising "HIPAA Secure / Encrypted". -->
+<script src="https://unpkg.com/lucide@0.462.0" defer></script>
+
+</head>
+<body>
+
+<div class="background"></div>
+
+<div class="floating-shapes">
+    <span></span>
+    <span></span>
+    <span></span>
+    <span></span>
+</div>
+
+<section class="login-container">
+
+    <!-- Left Content -->
+    <div class="hero">
+
+        <div class="logo">
+            <div class="logo-icon">
+                <i data-lucide="heart-pulse" aria-hidden="true"></i>
+            </div>
+
+            <h2>MediCore HMS</h2>
+        </div>
+
+        <div class="hero-content">
+
+            <span class="tag">
+                Next Generation Healthcare
+            </span>
+
+            <h1>
+                Smarter Healthcare.
+                <br>
+                Better Patient Care.
+            </h1>
+
+            <p>
+                Secure hospital management platform empowering doctors,
+                nurses, pharmacists, laboratory staff and administrators.
+            </p>
+
+            <div class="stats">
+
+                <div class="card">
+                    <h3>24K+</h3>
+                    <span>Patients</span>
+                </div>
+
+                <div class="card">
+                    <h3>150+</h3>
+                    <span>Doctors</span>
+                </div>
+
+                <div class="card">
+                    <h3>99.9%</h3>
+                    <span>Uptime</span>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="ecg">
+            <svg viewBox="0 0 1200 150" aria-hidden="true">
+                <path d="M0,75 
+                L120,75 
+                L160,40 
+                L200,110 
+                L240,10 
+                L280,140 
+                L320,75 
+                L1200,75"/>
+            </svg>
+        </div>
+
+    </div>
+
+    <!-- Login Form -->
+    <div class="login-panel">
+
+        <div class="glass">
+
+            <div class="panel-header">
+                <h2>Welcome Back</h2>
+                <p>Login to continue</p>
+            </div>
+
+            {% if messages %}
+                <div aria-live="polite">
+                    {% for message in messages %}
+                        <div class="alert-message {{ message.tags }}" role="alert">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="POST" action="{% url 'login' %}" novalidate>
+                {% csrf_token %}
+
+                <div class="input-group">
+                    <i data-lucide="user" aria-hidden="true"></i>
+                    <label for="username" class="sr-only">Username</label>
+                    <input
+                        id="username"
+                        type="text"
+                        name="username"
+                        placeholder="Username"
+                        value="{{ request.POST.username|default:'' }}"
+                        autocomplete="username"
+                        autofocus
+                        required
+                    >
+                </div>
+
+                <div class="input-group">
+                    <i data-lucide="lock" aria-hidden="true"></i>
+                    <label for="password" class="sr-only">Password</label>
+                    <input
+                        id="password"
+                        type="password"
+                        name="password"
+                        placeholder="Password"
+                        autocomplete="current-password"
+                        required
+                    >
+
+                    <span
+                        class="toggle"
+                        role="button"
+                        tabindex="0"
+                        aria-label="Show password"
+                        aria-pressed="false"
+                        aria-controls="password"
+                    >
+                        <i data-lucide="eye" aria-hidden="true"></i>
+                    </span>
+                </div>
+
+                <div class="options">
+
+                    <label>
+                        <input type="checkbox" name="remember_me">
+                        REMEMBER ME
+                    </label>
+
+                    <a href="#">
+                        Forgot Password?
+                    </a>
+
+                </div>
+
+                <button type="submit" class="login-btn">LOG IN</button>
+
+            </form>
+
+            <div class="security">
+
+                <div>
+                    <i data-lucide="shield-check" aria-hidden="true"></i>
+                    HIPAA Secure
+                </div>
+
+                <div>
+                    <i data-lucide="fingerprint" aria-hidden="true"></i>
+                    Encrypted
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+<script src="{% static 'js/login.js' %}" defer></script>
+
+</body>
+</html>

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Technician Dashboard - Hospital Management System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        header h1 {
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+        
+        header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 5px;
+        }
+        
+        .badge-pending {
+            background-color: #ffeaa7;
+            color: #d63031;
+        }
+        
+        .badge-completed {
+            background-color: #a9e6a6;
+            color: #27ae60;
+        }
+        
+        .badge-urgent {
+            background-color: #ff7675;
+            color: white;
+        }
+        
+        .table-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .table-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        table thead {
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            font-size: 14px;
+        }
+        
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-right: 5px;
+        }
+        
+        .btn-primary {
+            background-color: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #5568d3;
+        }
+        
+        .btn-success {
+            background-color: #27ae60;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #229954;
+        }
+        
+        .btn-warning {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e67e22;
+        }
+        
+        .quick-actions {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .actions-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 Lab Technician Dashboard</h1>
+            <p>Hospital Laboratory Management System</p>
+        </header>
+        
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-title">📋 Pending Tests</div>
+                <div class="stat-number">12</div>
+                <div class="stat-label">Tests awaiting processing</div>
+                <span class="badge badge-pending">Action Required</span>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">✅ Completed Today</div>
+                <div class="stat-number">28</div>
+                <div class="stat-label">Tests successfully processed</div>
+                <span class="badge badge-completed">On Track</span>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">⚠️ Urgent Samples</div>
+                <div class="stat-number">3</div>
+                <div class="stat-label">High priority samples</div>
+                <span class="badge badge-urgent">Priority</span>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">📊 Queue Status</div>
+                <div class="stat-number">45</div>
+                <div class="stat-label">Total samples in queue</div>
+                <span class="badge badge-pending">Moderate Load</span>
+            </div>
+        </div>
+        
+        <div class="table-section">
+            <div class="table-title">📦 Pending Tests</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sample ID</th>
+                        <th>Patient Name</th>
+                        <th>Test Type</th>
+                        <th>Priority</th>
+                        <th>Received Time</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>#LAB-2024-001</td>
+                        <td>John Smith</td>
+                        <td>Blood Test</td>
+                        <td><span class="badge badge-urgent">Urgent</span></td>
+                        <td>10:30 AM</td>
+                        <td>Pending</td>
+                        <td><button class="btn btn-primary">Start</button></td>
+                    </tr>
+                    <tr>
+                        <td>#LAB-2024-002</td>
+                        <td>Sarah Johnson</td>
+                        <td>Urinalysis</td>
+                        <td><span class="badge badge-pending">Normal</span></td>
+                        <td>11:15 AM</td>
+                        <td>Pending</td>
+                        <td><button class="btn btn-primary">Start</button></td>
+                    </tr>
+                    <tr>
+                        <td>#LAB-2024-003</td>
+                        <td>Michael Brown</td>
+                        <td>COVID-19 Test</td>
+                        <td><span class="badge badge-pending">Normal</span></td>
+                        <td>11:45 AM</td>
+                        <td>Pending</td>
+                        <td><button class="btn btn-primary">Start</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="table-section">
+            <div class="table-title">🔄 In Progress Tests</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sample ID</th>
+                        <th>Patient Name</th>
+                        <th>Test Type</th>
+                        <th>Started At</th>
+                        <th>Progress</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>#LAB-2024-005</td>
+                        <td>Emily Davis</td>
+                        <td>Biochemistry Panel</td>
+                        <td>09:00 AM</td>
+                        <td>75% Complete</td>
+                        <td><button class="btn btn-warning">In Progress</button></td>
+                    </tr>
+                    <tr>
+                        <td>#LAB-2024-006</td>
+                        <td>Robert Wilson</td>
+                        <td>Hematology</td>
+                        <td>09:30 AM</td>
+                        <td>50% Complete</td>
+                        <td><button class="btn btn-warning">In Progress</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="table-section">
+            <div class="table-title">✅ Completed Tests</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sample ID</th>
+                        <th>Patient Name</th>
+                        <th>Test Type</th>
+                        <th>Completed At</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>#LAB-2024-010</td>
+                        <td>Lisa Anderson</td>
+                        <td>Blood Test</td>
+                        <td>08:15 AM</td>
+                        <td><span class="badge badge-completed">Completed</span></td>
+                        <td><button class="btn btn-success">View Report</button></td>
+                    </tr>
+                    <tr>
+                        <td>#LAB-2024-011</td>
+                        <td>David Martinez</td>
+                        <td>Urinalysis</td>
+                        <td>08:45 AM</td>
+                        <td><span class="badge badge-completed">Completed</span></td>
+                        <td><button class="btn btn-success">View Report</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="quick-actions">
+            <div class="actions-title">⚡ Quick Actions</div>
+            <div class="action-buttons">
+                <button class="btn btn-primary">➕ Add New Sample</button>
+                <button class="btn btn-primary">🔍 Search Tests</button>
+                <button class="btn btn-primary">📥 Import Batch</button>
+                <button class="btn btn-success">📤 Export Results</button>
+                <button class="btn btn-warning">🔧 Equipment Status</button>
+                <button class="btn btn-primary">📞 Contact Support</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

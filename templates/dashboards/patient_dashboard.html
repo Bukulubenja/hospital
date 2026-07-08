@@ -1,0 +1,650 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patient Dashboard - Hospital Management System</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<!-- animate.css was linked in the original markup but no animate__ classes
+     are used anywhere on this page — dropped as dead weight (one less
+     render-blocking request). -->
+<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+    <div class="container-main">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-heartbeat" aria-hidden="true"></i>
+                MediCare
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#dashboard" class="nav-link active" data-section="dashboard">
+                        <i class="fas fa-chart-line" aria-hidden="true"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#appointments" class="nav-link" data-section="appointments">
+                        <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                        <span>Appointments</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#medical-history" class="nav-link" data-section="medical-history">
+                        <i class="fas fa-file-medical" aria-hidden="true"></i>
+                        <span>Medical Records</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#lab-results" class="nav-link" data-section="lab-results">
+                        <i class="fas fa-flask" aria-hidden="true"></i>
+                        <span>Lab Results</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#prescriptions" class="nav-link" data-section="prescriptions">
+                        <i class="fas fa-prescription" aria-hidden="true"></i>
+                        <span>Prescriptions</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#billing" class="nav-link" data-section="billing">
+                        <i class="fas fa-receipt" aria-hidden="true"></i>
+                        <span>Billing &amp; Payments</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#messages" class="nav-link" data-section="messages">
+                        <i class="fas fa-envelope" aria-hidden="true"></i>
+                        <span>Messages</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#telemedicine" class="nav-link" data-section="telemedicine">
+                        <i class="fas fa-video" aria-hidden="true"></i>
+                        <span>Telemedicine</span>
+                    </a>
+                </li>
+            </ul>
+
+            <!-- Was a bare <div> holding two stray <li> elements outside any
+                 <ul>/<ol> — invalid HTML that some assistive tech and CSS
+                 selectors mis-handle. Now a proper second <ul>. -->
+            <ul class="nav-menu-secondary">
+                <li class="nav-item">
+                    <a href="#profile" class="nav-link" data-section="profile">
+                        <i class="fas fa-user-circle" aria-hidden="true"></i>
+                        <span>My Profile</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#settings" class="nav-link" data-section="settings">
+                        <i class="fas fa-cog" aria-hidden="true"></i>
+                        <span>Settings</span>
+                    </a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <div class="header-left">
+                    <h1>Welcome back, {{ request.user.get_full_name|default:request.user.username }}</h1>
+                    <p>Here's your health overview</p>
+                </div>
+
+                <div class="header-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                        <label for="dashboard-search" class="sr-only">Search records, doctors</label>
+                        <input id="dashboard-search" type="search" placeholder="Search records, doctors...">
+                    </div>
+
+                    <div class="header-icons">
+                        <button class="icon-btn" aria-label="Notifications ({{ unread_notification_count|default:0 }} unread)">
+                            <i class="fas fa-bell" aria-hidden="true"></i>
+                            {% if unread_notification_count %}
+                                <span class="notification-badge">{{ unread_notification_count }}</span>
+                            {% endif %}
+                        </button>
+                        <button class="icon-btn" aria-label="Messages">
+                            <i class="fas fa-envelope" aria-hidden="true"></i>
+                        </button>
+                        <button class="icon-btn" id="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
+                            <i class="fas fa-moon" aria-hidden="true"></i>
+                        </button>
+                    </div>
+
+                    <button class="emergency-btn pulse" data-open-modal="emergency-modal">
+                        <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+                        Emergency
+                    </button>
+                </div>
+            </div>
+
+            <section id="dashboard-section">
+                <!-- Patient Overview Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-user-md" aria-hidden="true"></i>
+                            </div>
+                            Patient Overview
+                        </h2>
+                        <span class="status-badge badge-success">
+                            <i class="fas fa-check-circle" aria-hidden="true"></i> Active
+                        </span>
+                    </div>
+
+                    <div class="patient-overview">
+                        <div class="info-box">
+                            <div class="info-label">Medical ID</div>
+                            <div class="info-value">{{ patient.patient_number }}</div>
+                        </div>
+                        <div class="info-box">
+                            <div class="info-label">Blood Group</div>
+                            <div class="info-value">{{ patient.blood_group|default:"—" }}</div>
+                        </div>
+                        <div class="info-box">
+                            <!-- NOTE: `Patient` has no `allergies` field in the current
+                                 model, so this can't be real data yet. Add the field
+                                 (or a related AllergyRecord model) before wiring this up. -->
+                            <div class="info-label">Allergies</div>
+                            <div class="info-value">{{ patient.allergies|default:"Not recorded" }}</div>
+                        </div>
+                        <div class="info-box">
+                            <div class="info-label">Last Visit</div>
+                            <div class="info-value">{{ last_visit.visit_date|timesince|default:"—" }}</div>
+                        </div>
+                    </div>
+
+                    {% if latest_visit_summary %}
+                        <p class="text-muted">
+                            <i class="fas fa-info-circle" aria-hidden="true"></i>
+                            {{ latest_visit_summary }}
+                        </p>
+                    {% endif %}
+                </div>
+
+                <div class="dashboard-grid">
+                    <!-- Upcoming Appointments -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <div class="card-icon primary">
+                                    <i class="fas fa-calendar-check" aria-hidden="true"></i>
+                                </div>
+                                Upcoming
+                            </h2>
+                            <a href="{% url 'appointment_list' %}" class="card-link">View All</a>
+                        </div>
+
+                        {% for appointment in upcoming_appointments %}
+                            <div class="appointment-item">
+                                <div class="appointment-info">
+                                    <div class="appointment-doctor">
+                                        {{ appointment.doctor.get_full_name|default:"Doctor to be assigned" }}
+                                    </div>
+                                    <div class="appointment-time">
+                                        <i class="fas fa-clock" aria-hidden="true"></i>
+                                        {{ appointment.appointment_date|date:"D, g:i A" }}
+                                    </div>
+                                    <div class="appointment-time" style="margin-top: 0.25rem;">
+                                        <i class="fas fa-stethoscope" aria-hidden="true"></i>
+                                        {{ appointment.reason|default:appointment.department.name }}
+                                    </div>
+                                </div>
+                                <div class="appointment-actions">
+                                    <button class="btn-sm btn-primary"
+                                            aria-label="Confirm appointment with {{ appointment.doctor.get_full_name|default:'assigned doctor' }}">
+                                        <i class="fas fa-check" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <p class="text-muted">No upcoming appointments.</p>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <div class="card-icon success">
+                                    <i class="fas fa-bolt" aria-hidden="true"></i>
+                                </div>
+                                Quick Actions
+                            </h2>
+                        </div>
+
+                        <div class="action-grid">
+                            <a class="btn-sm btn-primary" href="{% url 'appointment_create' %}">
+                                <i class="fas fa-plus" aria-hidden="true"></i> Book Appointment
+                            </a>
+                            <a class="btn-sm btn-secondary" href="{% url 'prescription_refill' %}">
+                                <i class="fas fa-sync" aria-hidden="true"></i> Refill Prescription
+                            </a>
+                            <a class="btn-sm btn-primary" href="{% url 'telemedicine_start' %}">
+                                <i class="fas fa-video" aria-hidden="true"></i> Video Consultation
+                            </a>
+                            <a class="btn-sm btn-secondary" href="{% url 'records_download' %}">
+                                <i class="fas fa-file-download" aria-hidden="true"></i> Download Records
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Vital Signs -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <div class="card-icon warning">
+                                    <i class="fas fa-heartbeat" aria-hidden="true"></i>
+                                </div>
+                                Vital Signs
+                            </h2>
+                        </div>
+
+                        {% if latest_vitals %}
+                            <div class="action-grid" style="margin-top: 1rem;">
+                                <div style="text-align: center;">
+                                    <div class="info-value" style="font-size: 1.75rem;">{{ latest_vitals.blood_pressure }}</div>
+                                    <div class="text-muted">Blood Pressure</div>
+                                    <span class="status-badge badge-success">Recorded</span>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div class="info-value" style="font-size: 1.75rem;">{{ latest_vitals.pulse_rate }}</div>
+                                    <div class="text-muted">Heart Rate (bpm)</div>
+                                    <span class="status-badge badge-success">Recorded</span>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div class="info-value" style="font-size: 1.75rem;">{{ latest_vitals.temperature }}°F</div>
+                                    <div class="text-muted">Temperature</div>
+                                    <span class="status-badge badge-success">Recorded</span>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div class="info-value" style="font-size: 1.75rem;">{{ latest_vitals.weight }}</div>
+                                    <div class="text-muted">Weight</div>
+                                    <span class="status-badge badge-success">Recorded</span>
+                                </div>
+                            </div>
+                        {% else %}
+                            <p class="text-muted">No vitals recorded yet.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Lab Results -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-flask" aria-hidden="true"></i>
+                            </div>
+                            Recent Lab Results
+                        </h2>
+                        <a href="{% url 'lab_result_list' %}" class="card-link">View All Results</a>
+                    </div>
+
+                    <div class="tile-grid">
+                        {% for result in recent_lab_results %}
+                            <div class="tile {% if result.remarks %}tile-warning{% else %}tile-success{% endif %}">
+                                <div class="tile-title">{{ result.test.name }}</div>
+                                <div class="tile-subtitle">Test Date: {{ result.result_date|date:"M j, Y" }}</div>
+                                {% if result.remarks %}
+                                    <span class="status-badge badge-warning">Needs Review</span>
+                                {% else %}
+                                    <span class="status-badge badge-success">Normal Range</span>
+                                {% endif %}
+                            </div>
+                        {% empty %}
+                            <p class="text-muted">No recent lab results.</p>
+                        {% endfor %}
+                    </div>
+
+                    <div class="chart-container">
+                        <div class="placeholder-chart">
+                            <i class="fas fa-chart-area" style="font-size: 3rem; opacity: 0.2;" aria-hidden="true"></i>
+                            <div>
+                                <div style="font-weight: 600;">Lab Trend Analysis</div>
+                                <div style="font-size: 0.85rem; margin-top: 0.25rem;">Visual representation of lab values over time</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Medical History Timeline -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-history" aria-hidden="true"></i>
+                            </div>
+                            Medical History
+                        </h2>
+                        <label for="history-department-filter" class="sr-only">Filter by department</label>
+                        <select id="history-department-filter">
+                            <option value="">All Departments</option>
+                            {% for department in departments %}
+                                <option value="{{ department.id }}">{{ department.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="timeline">
+                        {% for record in medical_history %}
+                            <div class="timeline-item">
+                                <div class="timeline-content">
+                                    <div class="timeline-date">{{ record.created_at|date:"F j, Y" }}</div>
+                                    <div class="timeline-title">{{ record.visit.get_visit_type_display }}</div>
+                                    <div class="timeline-description">{{ record.diagnosis }}</div>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <p class="text-muted">No medical history on file.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Prescriptions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon success">
+                                <i class="fas fa-prescription" aria-hidden="true"></i>
+                            </div>
+                            Active Prescriptions
+                        </h2>
+                        <a href="{% url 'prescription_refill' %}" class="card-link">Request Refill</a>
+                    </div>
+
+                    {% for item in active_prescription_items %}
+                        <div class="prescription-item">
+                            <div class="prescription-name">{{ item.drug.name }} {{ item.drug.strength }}</div>
+                            <div class="prescription-details">
+                                <i class="fas fa-pills" aria-hidden="true"></i> {{ item.frequency }}
+                            </div>
+                            {% if item.days_left <= 5 %}
+                                <div class="prescription-days-left low">
+                                    <i class="fas fa-exclamation" aria-hidden="true"></i>
+                                    {{ item.days_left }} days left - REFILL SOON
+                                </div>
+                            {% else %}
+                                <div class="prescription-days-left">
+                                    <i class="fas fa-hourglass-end" aria-hidden="true"></i>
+                                    {{ item.days_left }} days left
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted">No active prescriptions.</p>
+                    {% endfor %}
+                </div>
+
+                <!-- Smart Queue Prediction -->
+                <!-- No queue-prediction model/service exists in this project yet;
+                     these numbers are illustrative only until that's built. -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon warning">
+                                <i class="fas fa-list" aria-hidden="true"></i>
+                            </div>
+                            Smart Queue Prediction
+                        </h2>
+                    </div>
+
+                    <div class="queue-status">
+                        <div class="queue-item">
+                            <div class="queue-number">{{ queue_ticket.queue_number|default:"—" }}</div>
+                            <div class="queue-label">Current Queue</div>
+                        </div>
+                        <div class="queue-item">
+                            <div class="queue-number">{{ estimated_wait_minutes|default:"—" }}</div>
+                            <div class="queue-label">Est. Wait Time</div>
+                        </div>
+                        <div class="queue-item">
+                            <div class="queue-number">{{ queue_position|default:"—" }}</div>
+                            <div class="queue-label">Your Position</div>
+                        </div>
+                        <div class="queue-item">
+                            <div class="queue-number">{{ estimated_time|default:"—" }}</div>
+                            <div class="queue-label">Est. Your Time</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-receipt" aria-hidden="true"></i>
+                            </div>
+                            Billing &amp; Payments
+                        </h2>
+                        <a href="{% url 'invoice_list' %}" class="card-link">View All Invoices</a>
+                    </div>
+
+                    <div class="tile-grid">
+                        <div class="summary-tile paid">
+                            <div class="summary-label">Paid</div>
+                            <div class="summary-value">${{ total_paid|default:"0" }}</div>
+                        </div>
+                        <div class="summary-tile pending">
+                            <div class="summary-label">Pending</div>
+                            <div class="summary-value">${{ total_pending|default:"0" }}</div>
+                        </div>
+                        <div class="summary-tile due">
+                            <div class="summary-label">Due</div>
+                            <div class="summary-value">${{ total_due|default:"0" }}</div>
+                        </div>
+                    </div>
+
+                    <table class="billing-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Description</th>
+                                <th scope="col">Amount</th>
+                                <th scope="col">Date</th>
+                                <th scope="col">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invoice in recent_invoices %}
+                                <tr>
+                                    <td>{{ invoice.visit.get_visit_type_display }}</td>
+                                    <td>${{ invoice.total_amount }}</td>
+                                    <td>{{ invoice.created_at|date:"M j, Y" }}</td>
+                                    <td>
+                                        {% if invoice.status == "PAID" %}
+                                            <span class="status-badge badge-success">Paid</span>
+                                        {% elif invoice.status == "PARTIAL" %}
+                                            <span class="status-badge badge-warning">Pending</span>
+                                        {% else %}
+                                            <span class="status-badge badge-danger">Due</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-muted">No invoices yet.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Messages -->
+                <!-- No Message model exists in this project yet — placeholder content. -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon secondary">
+                                <i class="fas fa-envelope" aria-hidden="true"></i>
+                            </div>
+                            Secure Messages
+                        </h2>
+                        <a href="#" class="card-link">View All</a>
+                    </div>
+
+                    {% for message in recent_messages %}
+                        <div class="message-item">
+                            <div class="message-header">
+                                <div class="message-from">{{ message.sender_name }}</div>
+                                <div class="message-time">{{ message.sent_at|timesince }} ago</div>
+                            </div>
+                            <div class="message-preview">{{ message.preview }}</div>
+                        </div>
+                    {% empty %}
+                        <p class="text-muted">No messages.</p>
+                    {% endfor %}
+                </div>
+
+                <!-- Notifications -->
+                <!-- No Notification model exists in this project yet — placeholder content. -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon primary">
+                                <i class="fas fa-bell" aria-hidden="true"></i>
+                            </div>
+                            Notifications
+                        </h2>
+                        <button class="btn-sm btn-secondary">Mark All as Read</button>
+                    </div>
+
+                    {% for notification in recent_notifications %}
+                        <div class="notification-item {% if not notification.is_read %}unread{% endif %}">
+                            <div class="notification-icon">
+                                <i class="fas fa-circle-info" aria-hidden="true"></i>
+                            </div>
+                            <div class="notification-content">
+                                <div class="notification-title">{{ notification.title }}</div>
+                                <div class="notification-description">{{ notification.description }}</div>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <p class="text-muted">No notifications.</p>
+                    {% endfor %}
+                </div>
+
+                <!-- Telemedicine -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon success">
+                                <i class="fas fa-video" aria-hidden="true"></i>
+                            </div>
+                            Telemedicine
+                        </h2>
+                    </div>
+
+                    <div class="telemedicine-grid">
+                        <div class="telemedicine-tile video">
+                            <i class="fas fa-video" aria-hidden="true"></i>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Start Video Consultation</div>
+                            <p class="text-muted" style="margin-bottom: 1rem;">Connect with available doctors instantly</p>
+                            <a class="btn-sm btn-primary" href="{% url 'telemedicine_start' %}">
+                                <i class="fas fa-phone" aria-hidden="true"></i> Start Call
+                            </a>
+                        </div>
+
+                        <div class="telemedicine-tile chat">
+                            <i class="fas fa-comment-dots" aria-hidden="true"></i>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Chat with Doctor</div>
+                            <p class="text-muted" style="margin-bottom: 1rem;">Send messages without video call</p>
+                            <a class="btn-sm btn-primary" href="{% url 'telemedicine_chat' %}">
+                                <i class="fas fa-comments" aria-hidden="true"></i> Chat Now
+                            </a>
+                        </div>
+
+                        <div class="telemedicine-tile history">
+                            <i class="fas fa-history" aria-hidden="true"></i>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Consultation History</div>
+                            <p class="text-muted" style="margin-bottom: 1rem;">View past video calls and chats</p>
+                            <a class="btn-sm btn-primary" href="{% url 'telemedicine_history' %}">
+                                <i class="fas fa-list" aria-hidden="true"></i> View History
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="dashboard-footer">
+                <p style="margin-bottom: 0.5rem;">
+                    <i class="fas fa-shield-alt" aria-hidden="true"></i> Your data is encrypted and secure
+                </p>
+                <p style="font-size: 0.85rem;">
+                    &copy; {% now "Y" %} MediCare Hospital Management System. All rights reserved.
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Emergency Modal -->
+    <div class="modal" id="emergency-modal" role="dialog" aria-modal="true" aria-labelledby="emergency-modal-title" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="emergency-modal-title">
+                    <i class="fas fa-exclamation-circle" style="color: var(--danger); margin-right: 0.75rem;" aria-hidden="true"></i>
+                    Emergency Alert
+                </h2>
+                <button class="modal-close" data-close-modal="emergency-modal" aria-label="Close emergency alert dialog">
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem;">Select the severity level of your emergency:</p>
+
+                <div class="form-group" role="radiogroup" aria-label="Emergency severity">
+                    <label class="severity-option">
+                        <input type="radio" name="severity" value="critical">
+                        <span style="font-weight: 600;">🔴 Critical</span>
+                        <span class="severity-desc">Life-threatening</span>
+                    </label>
+                    <label class="severity-option">
+                        <input type="radio" name="severity" value="urgent">
+                        <span style="font-weight: 600;">🟠 Urgent</span>
+                        <span class="severity-desc">Severe symptoms</span>
+                    </label>
+                    <label class="severity-option">
+                        <input type="radio" name="severity" value="moderate">
+                        <span style="font-weight: 600;">🟡 Moderate</span>
+                        <span class="severity-desc">Needs attention</span>
+                    </label>
+                </div>
+
+                <label class="share-location-label" for="share-location">
+                    <input type="checkbox" id="share-location">
+                    <span>Share my location with hospital</span>
+                </label>
+
+                <div class="form-group">
+                    <label class="form-label" for="emergency-details">Additional Details</label>
+                    <textarea id="emergency-details" class="form-textarea" placeholder="Describe your emergency..."></textarea>
+                </div>
+
+                <p id="emergency-status" class="emergency-status" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-lg btn-cancel" data-close-modal="emergency-modal">Cancel</button>
+                <button class="btn-lg btn-primary" id="emergency-submit">
+                    <i class="fas fa-paper-plane" aria-hidden="true"></i> Send Alert
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'js/patient_dashboard.js' %}" defer></script>
+</body>
+</html>
