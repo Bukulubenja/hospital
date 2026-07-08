@@ -3,7 +3,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from .models import LabResult, ServiceGate, Stock, StockTransaction, Visit
+from .models import LabResult, ServiceGate, Stock, StockTransaction, Visit, VisitInvoice
 
 
 def is_gate_cleared(visit, service_type: str) -> bool:
@@ -96,3 +96,21 @@ def visit_status_after_lab(visit) -> str:
     if visit.prescriptions.exists():
         return Visit.Status.WAITING_PHARMACY
     return Visit.Status.COMPLETED
+
+
+def refresh_invoice_totals(invoice):
+    """
+    Recompute total_amount from the invoice's line items and status from
+    payments made so far. Call this after adding a charge or recording a
+    payment — either can change what's owed or whether it's settled.
+    """
+    invoice.total_amount = sum(item.subtotal for item in invoice.items.all())
+
+    if invoice.total_amount <= 0 or invoice.amount_paid <= 0:
+        invoice.status = VisitInvoice.Status.UNPAID
+    elif invoice.amount_paid >= invoice.total_amount:
+        invoice.status = VisitInvoice.Status.PAID
+    else:
+        invoice.status = VisitInvoice.Status.PARTIAL
+
+    invoice.save(update_fields=["total_amount", "status"])

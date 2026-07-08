@@ -14,13 +14,16 @@ from .models import (
     LabTest,
     MedicalRecord,
     Patient,
+    Payment,
     Prescription,
     PrescriptionItem,
     QueueTicket,
+    Service,
     Stock,
     StockTransaction,
     User,
     Visit,
+    VisitInvoice,
     VitalSigns,
 )
 
@@ -547,3 +550,128 @@ class LabWorkflowTests(TestCase):
         self.assertFalse(
             LabResult.objects.filter(lab_order=self.lab_order, test=self.test_a).exists()
         )
+
+
+class CashierWorkflowTests(TestCase):
+    def setUp(self):
+        self.cashier = User.objects.create_user(
+            username="cash1", password="pass1234", role=User.Role.CASHIER
+        )
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.department = Department.objects.create(name="General Medicine")
+        self.patient = Patient.objects.create(
+            full_name="Owes Money", gender="F", date_of_birth="1991-01-01",
+            phone="0700000003", patient_number="P-400001",
+        )
+        self.visit = Visit.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.COMPLETED,
+        )
+        self.consultation_fee = Service.objects.create(
+            name="Consultation Fee", service_type=Service.ServiceType.APPOINTMENT, price=20,
+        )
+        self.client.login(username="cash1", password="pass1234")
+
+    def test_non_cashier_denied(self):
+        User.objects.create_user(username="nurse1", password="pass1234", role=User.Role.NURSE)
+        self.client.logout()
+        self.client.login(username="nurse1", password="pass1234")
+
+        response = self.client.get(reverse("cashier_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_visit_invoice_detail_lazily_creates_invoice(self):
+        self.assertFalse(VisitInvoice.objects.filter(visit=self.visit).exists())
+
+        response = self.client.get(reverse("visit_invoice_detail", args=[self.visit.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+        self.assertEqual(invoice.total_amount, 0)
+        self.assertEqual(invoice.status, VisitInvoice.Status.UNPAID)
+
+    def test_add_charge_updates_total(self):
+        response = self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
+            "service": self.consultation_fee.pk, "quantity": "2",
+        })
+
+        self.assertRedirects(response, reverse("visit_invoice_detail", args=[self.visit.pk]))
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+        self.assertEqual(invoice.total_amount, 40)
+        self.assertEqual(invoice.status, VisitInvoice.Status.UNPAID)
+
+    def test_partial_payment_updates_status(self):
+        self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
+            "service": self.consultation_fee.pk, "quantity": "5",  # total 100
+        })
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+
+        response = self.client.post(reverse("record_payment", args=[self.visit.pk]), {
+            "amount_paid": "40", "method": Payment.PaymentMethod.CASH, "reference": "",
+        })
+
+        self.assertRedirects(response, reverse("visit_invoice_detail", args=[self.visit.pk]))
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, VisitInvoice.Status.PARTIAL)
+        self.assertEqual(invoice.amount_paid, 40)
+        self.assertEqual(invoice.balance_due, 60)
+        payment = Payment.objects.get(invoice=invoice)
+        self.assertTrue(payment.receipt_number.startswith("RCPT-"))
+
+    def test_full_payment_marks_paid(self):
+        self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
+            "service": self.consultation_fee.pk, "quantity": "1",  # total 20
+        })
+
+        self.client.post(reverse("record_payment", args=[self.visit.pk]), {
+            "amount_paid": "20", "method": Payment.PaymentMethod.CASH, "reference": "",
+        })
+
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+        self.assertEqual(invoice.status, VisitInvoice.Status.PAID)
+        self.assertEqual(invoice.balance_due, 0)
+
+    def test_overpayment_rejected(self):
+        self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
+            "service": self.consultation_fee.pk, "quantity": "1",  # total 20
+        })
+
+        self.client.post(reverse("record_payment", args=[self.visit.pk]), {
+            "amount_paid": "999", "method": Payment.PaymentMethod.CASH, "reference": "",
+        })
+
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+        self.assertEqual(invoice.status, VisitInvoice.Status.UNPAID)
+        self.assertFalse(Payment.objects.filter(invoice=invoice).exists())
+
+    def test_payment_rejected_once_fully_paid(self):
+        self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
+            "service": self.consultation_fee.pk, "quantity": "1",  # total 20
+        })
+        self.client.post(reverse("record_payment", args=[self.visit.pk]), {
+            "amount_paid": "20", "method": Payment.PaymentMethod.CASH, "reference": "",
+        })
+
+        self.client.post(reverse("record_payment", args=[self.visit.pk]), {
+            "amount_paid": "5", "method": Payment.PaymentMethod.CASH, "reference": "",
+        })
+
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+        self.assertEqual(Payment.objects.filter(invoice=invoice).count(), 1)
+        self.assertEqual(invoice.amount_paid, 20)
+
+    def test_zero_or_negative_payment_rejected(self):
+        self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
+            "service": self.consultation_fee.pk, "quantity": "1",
+        })
+
+        self.client.post(reverse("record_payment", args=[self.visit.pk]), {
+            "amount_paid": "0", "method": Payment.PaymentMethod.CASH, "reference": "",
+        })
+
+        invoice = VisitInvoice.objects.get(visit=self.visit)
+        self.assertFalse(Payment.objects.filter(invoice=invoice).exists())
+        self.assertEqual(invoice.status, VisitInvoice.Status.UNPAID)

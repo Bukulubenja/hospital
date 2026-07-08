@@ -13,15 +13,18 @@ from django.utils import timezone
 from .decorators import role_required
 from .forms import (
     AppointmentForm,
+    InvoiceItemForm,
     LabOrderItemForm,
     LabResultForm,
     MedicalRecordForm,
     PatientForm,
+    PaymentForm,
     PrescriptionItemForm,
     VitalSignsForm,
 )
 from .models import (
     Appointment,
+    InvoiceItem,
     LabOrder,
     LabOrderItem,
     LabResult,
@@ -31,11 +34,13 @@ from .models import (
     QueueTicket,
     Stock,
     Visit,
+    VisitInvoice,
 )
 from .permissions import can_doctor_access
 from .services import (
     dispense_prescription_item,
     lab_order_fully_resulted,
+    refresh_invoice_totals,
     visit_status_after_consultation,
     visit_status_after_lab,
 )
@@ -118,7 +123,6 @@ def _make_dashboard_view(role, template_name):
 
 
 nurse_dashboard = _make_dashboard_view("NURSE", "dashboards/nurse_dashboard.html")
-cashier_dashboard = _make_dashboard_view("CASHIER", "dashboards/cashier.html")
 admin_dashboard = _make_dashboard_view("ADMIN", "dashboards/admin.html")
 patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
 stock_dashboard = _make_dashboard_view("STOCK_MANAGER", "dashboards/stock.html")
@@ -621,3 +625,100 @@ def record_lab_result(request, pk, item_pk):
             )
 
     return redirect("lab_order_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------
+# Cashier workflow: bill a visit and collect payment
+# ---------------------------------------------------------------------
+
+@role_required("CASHIER")
+def cashier_dashboard(request):
+    visits = list(
+        Visit.objects.select_related("patient").order_by("-visit_date")[:50]
+    )
+    invoices_by_visit = {
+        invoice.visit_id: invoice
+        for invoice in VisitInvoice.objects.filter(visit_id__in=[v.id for v in visits])
+    }
+    for visit in visits:
+        visit.invoice = invoices_by_visit.get(visit.id)
+
+    return render(request, "dashboards/cashier.html", {"visits": visits})
+
+
+@role_required("CASHIER")
+def visit_invoice_detail(request, pk):
+    visit = get_object_or_404(Visit.objects.select_related("patient"), pk=pk)
+    invoice, _created = VisitInvoice.objects.get_or_create(
+        visit=visit, defaults={"patient": visit.patient, "total_amount": 0}
+    )
+
+    context = {
+        "visit": visit,
+        "invoice": invoice,
+        "items": invoice.items.select_related("service").all(),
+        "payments": invoice.payments.all(),
+        "item_form": InvoiceItemForm(),
+        "payment_form": PaymentForm(invoice=invoice),
+    }
+    return render(request, "dashboards/visit_invoice_detail.html", context)
+
+
+@role_required("CASHIER")
+def add_invoice_item(request, pk):
+    if request.method != "POST":
+        return redirect("visit_invoice_detail", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+    invoice, _created = VisitInvoice.objects.get_or_create(
+        visit=visit, defaults={"patient": visit.patient, "total_amount": 0}
+    )
+
+    form = InvoiceItemForm(request.POST)
+    if form.is_valid():
+        service = form.cleaned_data["service"]
+        quantity = form.cleaned_data["quantity"]
+        InvoiceItem.objects.create(
+            invoice=invoice, service=service, quantity=quantity, price=service.price
+        )
+        refresh_invoice_totals(invoice)
+        messages.success(request, f"Added {service.name} x{quantity}.")
+    else:
+        messages.error(request, "Could not add charge — check the values entered.")
+
+    return redirect("visit_invoice_detail", pk=pk)
+
+
+@role_required("CASHIER")
+def record_payment(request, pk):
+    if request.method != "POST":
+        return redirect("visit_invoice_detail", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+
+    with transaction.atomic():
+        invoice = get_object_or_404(VisitInvoice.objects.select_for_update(), visit=visit)
+
+        if invoice.balance_due <= 0:
+            messages.info(request, "This invoice is already fully paid.")
+            return redirect("visit_invoice_detail", pk=pk)
+
+        form = PaymentForm(request.POST, invoice=invoice)
+        if not form.is_valid():
+            for error in form.errors.get("amount_paid", []):
+                messages.error(request, error)
+            if not form.errors.get("amount_paid"):
+                messages.error(request, "Could not record payment — check the values entered.")
+            return redirect("visit_invoice_detail", pk=pk)
+
+        payment = form.save(commit=False)
+        payment.invoice = invoice
+        payment.save()
+        payment.receipt_number = f"RCPT-{payment.pk:06d}"
+        payment.save(update_fields=["receipt_number"])
+        refresh_invoice_totals(invoice)
+
+    messages.success(
+        request, f"Payment of {payment.amount_paid} recorded — receipt {payment.receipt_number}."
+    )
+    return redirect("visit_invoice_detail", pk=pk)

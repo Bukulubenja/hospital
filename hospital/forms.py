@@ -7,7 +7,9 @@ from .models import (
     LabTest,
     MedicalRecord,
     Patient,
+    Payment,
     PrescriptionItem,
+    Service,
     VitalSigns,
 )
 
@@ -93,3 +95,28 @@ class LabResultForm(forms.ModelForm):
         widgets = {
             "remarks": forms.Textarea(attrs={"rows": 2}),
         }
+
+
+class InvoiceItemForm(forms.Form):
+    service = forms.ModelChoiceField(queryset=Service.objects.all())
+    quantity = forms.IntegerField(min_value=1, initial=1)
+
+
+class PaymentForm(forms.ModelForm):
+    class Meta:
+        model = Payment
+        fields = ["amount_paid", "method", "reference"]
+
+    def __init__(self, *args, invoice=None, **kwargs):
+        self.invoice = invoice
+        super().__init__(*args, **kwargs)
+
+    def clean_amount_paid(self):
+        amount = self.cleaned_data["amount_paid"]
+        if amount <= 0:
+            raise forms.ValidationError("Amount paid must be greater than zero.")
+        if self.invoice is not None and amount > self.invoice.balance_due:
+            raise forms.ValidationError(
+                f"Amount exceeds the outstanding balance of {self.invoice.balance_due}."
+            )
+        return amount
