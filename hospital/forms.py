@@ -1,7 +1,7 @@
 from django import forms
 from django.utils import timezone
 
-from .models import Appointment, Patient
+from .models import Appointment, LabTest, MedicalRecord, Patient, PrescriptionItem, VitalSigns
 
 
 class PatientForm(forms.ModelForm):
@@ -47,3 +47,32 @@ class AppointmentForm(forms.ModelForm):
         if appointment_date < timezone.now():
             raise forms.ValidationError("Appointment date/time cannot be in the past.")
         return appointment_date
+
+
+class VitalSignsForm(forms.ModelForm):
+    class Meta:
+        model = VitalSigns
+        fields = ["temperature", "pulse_rate", "blood_pressure", "weight", "height"]
+
+
+class MedicalRecordForm(forms.ModelForm):
+    class Meta:
+        model = MedicalRecord
+        fields = ["diagnosis", "notes"]
+        widgets = {
+            "diagnosis": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+
+class PrescriptionItemForm(forms.ModelForm):
+    class Meta:
+        model = PrescriptionItem
+        fields = ["drug", "dosage", "frequency", "duration", "instructions"]
+        widgets = {
+            "instructions": forms.Textarea(attrs={"rows": 2}),
+        }
+
+
+class LabOrderItemForm(forms.Form):
+    test = forms.ModelChoiceField(queryset=LabTest.objects.all())

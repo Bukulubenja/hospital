@@ -1,0 +1,203 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Consultation — {{ visit.patient.full_name }}</title>
+	<link rel="stylesheet" href="{% static 'css/doctor.css' %}">
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>{{ visit.patient.full_name }}</h1>
+			<a class="back-link" href="{% url 'doctor_dashboard' %}">&larr; Dashboard</a>
+		</div>
+
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="patient-summary">
+				<div><strong>Patient #</strong>{{ visit.patient.patient_number }}</div>
+				<div><strong>Gender</strong>{{ visit.patient.get_gender_display }}</div>
+				<div><strong>DOB</strong>{{ visit.patient.date_of_birth }}</div>
+				<div><strong>Phone</strong>{{ visit.patient.phone }}</div>
+				<div><strong>Blood group</strong>{{ visit.patient.blood_group|default:"—" }}</div>
+				<div><strong>Status</strong><span class="badge badge-{{ visit.status|lower }}">{{ visit.get_status_display }}</span></div>
+			</div>
+			{% if visit.symptoms %}<p><strong>Reason for visit:</strong> {{ visit.symptoms }}</p>{% endif %}
+
+			<div class="section-actions">
+				{% if visit.status == "WAITING_DOCTOR" %}
+					<form method="post" action="{% url 'visit_start' visit.pk %}">
+						{% csrf_token %}
+						<button class="btn" type="submit">Start consultation</button>
+					</form>
+				{% elif in_consultation %}
+					<form method="post" action="{% url 'visit_complete' visit.pk %}"
+					      onsubmit="return confirm('Complete this visit?');">
+						{% csrf_token %}
+						<button class="btn" type="submit">Complete visit</button>
+					</form>
+				{% endif %}
+			</div>
+		</div>
+
+		<div class="card">
+			<h2>Vital signs</h2>
+			{% if vitals %}
+				<table>
+					<thead>
+						<tr><th>Recorded</th><th>Temp (°C)</th><th>Pulse</th><th>BP</th><th>Weight (kg)</th><th>Height (cm)</th></tr>
+					</thead>
+					<tbody>
+						{% for v in vitals %}
+							<tr>
+								<td>{{ v.recorded_at|date:"Y-m-d H:i" }}</td>
+								<td>{{ v.temperature }}</td>
+								<td>{{ v.pulse_rate }}</td>
+								<td>{{ v.blood_pressure }}</td>
+								<td>{{ v.weight }}</td>
+								<td>{{ v.height }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No vitals recorded yet.</p>
+			{% endif %}
+
+			{% if in_consultation %}
+				<form class="inline-form" method="post" action="{% url 'visit_record_vitals' visit.pk %}">
+					{% csrf_token %}
+					{% for field in vitals_form %}
+						<div class="field">
+							<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+							{{ field }}
+							{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+						</div>
+					{% endfor %}
+					<button class="btn" type="submit">Add vitals</button>
+				</form>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<h2>Diagnosis</h2>
+			{% if medical_records %}
+				<table>
+					<thead>
+						<tr><th>Date</th><th>Diagnosis</th><th>Notes</th></tr>
+					</thead>
+					<tbody>
+						{% for record in medical_records %}
+							<tr>
+								<td>{{ record.created_at|date:"Y-m-d H:i" }}</td>
+								<td>{{ record.diagnosis }}</td>
+								<td>{{ record.notes|default:"—" }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No diagnosis recorded yet.</p>
+			{% endif %}
+
+			{% if in_consultation %}
+				<form method="post" action="{% url 'visit_record_diagnosis' visit.pk %}" style="margin-top:12px;">
+					{% csrf_token %}
+					<div class="form-field">
+						<label for="{{ diagnosis_form.diagnosis.id_for_label }}">Diagnosis</label>
+						{{ diagnosis_form.diagnosis }}
+						{% if diagnosis_form.diagnosis.errors %}<ul class="errorlist">{% for e in diagnosis_form.diagnosis.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+					</div>
+					<div class="form-field">
+						<label for="{{ diagnosis_form.notes.id_for_label }}">Notes</label>
+						{{ diagnosis_form.notes }}
+					</div>
+					<button class="btn" type="submit">Save diagnosis</button>
+				</form>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<h2>Prescription</h2>
+			{% if prescription.items.all %}
+				<table>
+					<thead>
+						<tr><th>Drug</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+					</thead>
+					<tbody>
+						{% for item in prescription.items.all %}
+							<tr>
+								<td>{{ item.drug.name }} {{ item.drug.strength }}</td>
+								<td>{{ item.dosage }}</td>
+								<td>{{ item.frequency }}</td>
+								<td>{{ item.duration }}</td>
+								<td>{{ item.instructions|default:"—" }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No drugs prescribed yet.</p>
+			{% endif %}
+
+			{% if in_consultation %}
+				<form class="inline-form" method="post" action="{% url 'visit_add_prescription_item' visit.pk %}">
+					{% csrf_token %}
+					{% for field in prescription_form %}
+						<div class="field">
+							<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+							{{ field }}
+							{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+						</div>
+					{% endfor %}
+					<button class="btn" type="submit">Add drug</button>
+				</form>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<h2>Lab orders</h2>
+			{% if lab_order.items.all %}
+				<table>
+					<thead>
+						<tr><th>Test</th><th>Price</th></tr>
+					</thead>
+					<tbody>
+						{% for item in lab_order.items.all %}
+							<tr>
+								<td>{{ item.test.name }}</td>
+								<td>{{ item.test.price }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No lab tests ordered yet.</p>
+			{% endif %}
+
+			{% if in_consultation %}
+				<form class="inline-form" method="post" action="{% url 'visit_add_lab_test' visit.pk %}">
+					{% csrf_token %}
+					{% for field in lab_order_form %}
+						<div class="field">
+							<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+							{{ field }}
+							{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+						</div>
+					{% endfor %}
+					<button class="btn" type="submit">Order test</button>
+				</form>
+			{% endif %}
+		</div>
+	</div>
+</body>
+</html>

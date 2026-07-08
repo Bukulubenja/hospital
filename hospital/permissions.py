@@ -8,8 +8,9 @@ DOCTOR_ACCESSIBLE_STATUSES = {
 
 
 def can_doctor_access(user, visit: Visit) -> bool:
-    """True if this user is a doctor and the visit is at a stage they can act on."""
+    """True if this user is the doctor assigned to the visit and it's at a stage they can act on."""
     return (
         user.role == User.Role.DOCTOR
+        and visit.doctor_id == user.id
         and visit.status in DOCTOR_ACCESSIBLE_STATUSES
     )

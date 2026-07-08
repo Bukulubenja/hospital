@@ -1,6 +1,6 @@
 # services.py
 
-from .models import ServiceGate
+from .models import ServiceGate, Visit
 
 
 def is_gate_cleared(visit, service_type: str) -> bool:
@@ -25,3 +25,16 @@ def can_enter_lab_gate(visit) -> bool:
 def can_enter_pharmacy_gate(visit) -> bool:
     """A patient may proceed to pharmacy once their pharmacy gate is cleared."""
     return is_gate_cleared(visit, ServiceGate.GateType.PHARMACY)
+
+
+def visit_status_after_consultation(visit) -> str:
+    """
+    Route a visit onward once the doctor finishes with it: to the lab if
+    tests were ordered, to pharmacy if drugs were prescribed, otherwise
+    the visit is done.
+    """
+    if visit.lab_orders.exists():
+        return Visit.Status.WAITING_LAB
+    if visit.prescriptions.exists():
+        return Visit.Status.WAITING_PHARMACY
+    return Visit.Status.COMPLETED

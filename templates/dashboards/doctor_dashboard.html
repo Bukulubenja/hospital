@@ -1,269 +1,72 @@
-<!DOCTYPE html>
+{% load static %}
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Dashboard</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .header h1 {
-            color: #333;
-            font-size: 28px;
-        }
-        
-        .user-info {
-            text-align: right;
-        }
-        
-        .user-info p {
-            color: #666;
-            margin: 5px 0;
-        }
-        
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .card {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
-        }
-        
-        .card h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        
-        .card-number {
-            font-size: 36px;
-            font-weight: bold;
-            color: #333;
-            margin: 10px 0;
-        }
-        
-        .card-label {
-            color: #999;
-            font-size: 14px;
-        }
-        
-        .appointments-section {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-        }
-        
-        .appointments-section h2 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 22px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        th {
-            background: #f5f5f5;
-            padding: 12px;
-            text-align: left;
-            color: #333;
-            font-weight: 600;
-            border-bottom: 2px solid #ddd;
-        }
-        
-        td {
-            padding: 12px;
-            border-bottom: 1px solid #ddd;
-            color: #666;
-        }
-        
-        tr:hover {
-            background: #f9f9f9;
-        }
-        
-        .status {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .status.pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .status.completed {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .status.cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s ease;
-        }
-        
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #5568d3;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-    </style>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Doctor Dashboard</title>
+	<link rel="stylesheet" href="{% static 'css/doctor.css' %}">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div>
-                <h1>Doctor Dashboard</h1>
-            </div>
-            <div class="user-info">
-                <p><strong>Dr. John Smith</strong></p>
-                <p>Cardiologist</p>
-                <p style="font-size: 12px; color: #999;">Last login: Today at 09:30 AM</p>
-            </div>
-        </div>
-        
-        <div class="dashboard-grid">
-            <div class="card">
-                <h3>👥 Total Patients</h3>
-                <div class="card-number">152</div>
-                <div class="card-label">Active patients under your care</div>
-            </div>
-            
-            <div class="card">
-                <h3>📅 Today's Appointments</h3>
-                <div class="card-number">8</div>
-                <div class="card-label">Scheduled for today</div>
-            </div>
-            
-            <div class="card">
-                <h3>⏳ Pending Reviews</h3>
-                <div class="card-number">12</div>
-                <div class="card-label">Patient records awaiting review</div>
-            </div>
-            
-            <div class="card">
-                <h3>📊 Consultations This Month</h3>
-                <div class="card-number">87</div>
-                <div class="card-label">Total consultations completed</div>
-            </div>
-        </div>
-        
-        <div class="appointments-section">
-            <h2>Today's Appointments</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Patient Name</th>
-                        <th>Contact</th>
-                        <th>Reason</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>10:00 AM</td>
-                        <td>Robert Johnson</td>
-                        <td>555-0101</td>
-                        <td>Chest pain checkup</td>
-                        <td><span class="status pending">Pending</span></td>
-                        <td><button class="btn btn-primary">View</button></td>
-                    </tr>
-                    <tr>
-                        <td>11:30 AM</td>
-                        <td>Mary Williams</td>
-                        <td>555-0102</td>
-                        <td>Follow-up consultation</td>
-                        <td><span class="status pending">Pending</span></td>
-                        <td><button class="btn btn-primary">View</button></td>
-                    </tr>
-                    <tr>
-                        <td>1:00 PM</td>
-                        <td>James Brown</td>
-                        <td>555-0103</td>
-                        <td>ECG review</td>
-                        <td><span class="status completed">Completed</span></td>
-                        <td><button class="btn btn-secondary">View Report</button></td>
-                    </tr>
-                    <tr>
-                        <td>2:30 PM</td>
-                        <td>Patricia Miller</td>
-                        <td>555-0104</td>
-                        <td>Medication adjustment</td>
-                        <td><span class="status pending">Pending</span></td>
-                        <td><button class="btn btn-primary">View</button></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+	<div class="container">
+		<div class="header">
+			<h1>Welcome, Dr. {{ request.user.get_full_name|default:request.user.username }}</h1>
+			<a class="back-link" href="{% url 'logout' %}">Log out</a>
+		</div>
+
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<h2>In consultation</h2>
+			{% if in_progress_visits %}
+				<table>
+					<thead>
+						<tr><th>Patient</th><th>Type</th><th>Since</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for visit in in_progress_visits %}
+							<tr>
+								<td>{{ visit.patient.full_name }}</td>
+								<td>{{ visit.get_visit_type_display }}</td>
+								<td>{{ visit.visit_date|time:"H:i" }}</td>
+								<td><a class="btn" href="{% url 'visit_detail' visit.pk %}">Continue</a></td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No patients currently in consultation.</p>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<h2>Waiting for you</h2>
+			{% if waiting_visits %}
+				<table>
+					<thead>
+						<tr><th>Patient</th><th>Type</th><th>Checked in</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for visit in waiting_visits %}
+							<tr>
+								<td>{{ visit.patient.full_name }}</td>
+								<td>{{ visit.get_visit_type_display }}</td>
+								<td>{{ visit.visit_date|time:"H:i" }}</td>
+								<td><a class="btn" href="{% url 'visit_detail' visit.pk %}">Open</a></td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No patients waiting.</p>
+			{% endif %}
+		</div>
+	</div>
 </body>
 </html>
-        

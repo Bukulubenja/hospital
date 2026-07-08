@@ -4,7 +4,20 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Appointment, Department, Patient, QueueTicket, User, Visit
+from .models import (
+    Appointment,
+    Department,
+    Drug,
+    LabOrderItem,
+    LabTest,
+    MedicalRecord,
+    Patient,
+    PrescriptionItem,
+    QueueTicket,
+    User,
+    Visit,
+    VitalSigns,
+)
 
 
 class ReceptionWorkflowTests(TestCase):
@@ -153,3 +166,110 @@ class ReceptionWorkflowTests(TestCase):
         self.client.post(reverse("appointment_checkin", args=[appointment.pk]))
 
         self.assertFalse(Visit.objects.filter(appointment=appointment).exists())
+
+
+class DoctorWorkflowTests(TestCase):
+    def setUp(self):
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.other_doctor = User.objects.create_user(
+            username="doc2", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.department = Department.objects.create(name="General Medicine")
+        self.patient = Patient.objects.create(
+            full_name="Sam Waiting", gender="M", date_of_birth="1990-01-01",
+            phone="0700000000", patient_number="P-100001",
+        )
+        self.visit = Visit.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_DOCTOR,
+        )
+        self.ticket = QueueTicket.objects.create(visit=self.visit, queue_number=1)
+        self.drug = Drug.objects.create(name="Amoxicillin", category="Antibiotic", strength="500mg", unit_price=10)
+        self.lab_test = LabTest.objects.create(name="Full Blood Count", price=15)
+        self.client.login(username="doc1", password="pass1234")
+
+    def test_other_doctor_cannot_access_visit(self):
+        self.client.logout()
+        self.client.login(username="doc2", password="pass1234")
+
+        response = self.client.get(reverse("visit_detail", args=[self.visit.pk]))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_start_consultation_marks_queue_served(self):
+        response = self.client.post(reverse("visit_start", args=[self.visit.pk]))
+
+        self.assertRedirects(response, reverse("visit_detail", args=[self.visit.pk]))
+        self.visit.refresh_from_db()
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.IN_CONSULTATION)
+        self.assertTrue(self.ticket.served)
+
+    def test_cannot_record_vitals_before_starting_consultation(self):
+        self.client.post(reverse("visit_record_vitals", args=[self.visit.pk]), {
+            "temperature": "37.0", "pulse_rate": "70",
+            "blood_pressure": "120/80", "weight": "70", "height": "170",
+        })
+
+        self.assertEqual(VitalSigns.objects.filter(visit=self.visit).count(), 0)
+
+    def test_full_consultation_flow_routes_to_waiting_lab(self):
+        self.client.post(reverse("visit_start", args=[self.visit.pk]))
+
+        self.client.post(reverse("visit_record_vitals", args=[self.visit.pk]), {
+            "temperature": "37.5", "pulse_rate": "72",
+            "blood_pressure": "118/76", "weight": "68", "height": "172",
+        })
+        self.assertEqual(VitalSigns.objects.filter(visit=self.visit).count(), 1)
+
+        self.client.post(reverse("visit_record_diagnosis", args=[self.visit.pk]), {
+            "diagnosis": "Suspected infection", "notes": "Follow up in a week",
+        })
+        self.assertEqual(MedicalRecord.objects.filter(visit=self.visit).count(), 1)
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.diagnosis_summary, "Suspected infection")
+
+        self.client.post(reverse("visit_add_prescription_item", args=[self.visit.pk]), {
+            "drug": self.drug.pk, "dosage": "1 tablet", "frequency": "3x daily",
+            "duration": "5 days", "instructions": "After meals",
+        })
+        self.assertEqual(PrescriptionItem.objects.filter(prescription__visit=self.visit).count(), 1)
+
+        self.client.post(reverse("visit_add_lab_test", args=[self.visit.pk]), {
+            "test": self.lab_test.pk,
+        })
+        self.assertEqual(LabOrderItem.objects.filter(lab_order__visit=self.visit).count(), 1)
+
+        # Ordering the same test again must not create a duplicate.
+        self.client.post(reverse("visit_add_lab_test", args=[self.visit.pk]), {
+            "test": self.lab_test.pk,
+        })
+        self.assertEqual(LabOrderItem.objects.filter(lab_order__visit=self.visit).count(), 1)
+
+        response = self.client.post(reverse("visit_complete", args=[self.visit.pk]))
+
+        self.assertRedirects(response, reverse("doctor_dashboard"))
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.WAITING_LAB)
+
+    def test_complete_without_orders_marks_visit_completed(self):
+        self.client.post(reverse("visit_start", args=[self.visit.pk]))
+
+        self.client.post(reverse("visit_complete", args=[self.visit.pk]))
+
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.COMPLETED)
+
+    def test_prescription_only_routes_to_waiting_pharmacy(self):
+        self.client.post(reverse("visit_start", args=[self.visit.pk]))
+        self.client.post(reverse("visit_add_prescription_item", args=[self.visit.pk]), {
+            "drug": self.drug.pk, "dosage": "1 tablet", "frequency": "once daily",
+            "duration": "3 days", "instructions": "",
+        })
+
+        self.client.post(reverse("visit_complete", args=[self.visit.pk]))
+
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.WAITING_PHARMACY)

@@ -3,6 +3,7 @@ from datetime import datetime
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,8 +11,25 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .decorators import role_required
-from .forms import AppointmentForm, PatientForm
-from .models import Appointment, Patient, QueueTicket, Visit
+from .forms import (
+    AppointmentForm,
+    LabOrderItemForm,
+    MedicalRecordForm,
+    PatientForm,
+    PrescriptionItemForm,
+    VitalSignsForm,
+)
+from .models import (
+    Appointment,
+    LabOrder,
+    LabOrderItem,
+    Patient,
+    Prescription,
+    QueueTicket,
+    Visit,
+)
+from .permissions import can_doctor_access
+from .services import visit_status_after_consultation
 
 # Single source of truth for where each role lands after login.
 # Reused by both login_view and post_login_redirect so they can never
@@ -90,7 +108,6 @@ def _make_dashboard_view(role, template_name):
     return dashboard_view
 
 
-doctor_dashboard = _make_dashboard_view("DOCTOR", "dashboards/doctor_dashboard.html")
 nurse_dashboard = _make_dashboard_view("NURSE", "dashboards/nurse_dashboard.html")
 lab_dashboard = _make_dashboard_view("LAB", "dashboards/lab.html")
 pharmacy_dashboard = _make_dashboard_view("PHARMACIST", "dashboards/pharmacy.html")
@@ -271,3 +288,173 @@ def appointment_checkin(request, pk):
         request, f"{appointment.patient.full_name} checked in — queue number {next_number}."
     )
     return redirect("reception_dashboard")
+
+
+# ---------------------------------------------------------------------
+# Doctor workflow: consult -> vitals -> diagnosis -> prescribe / order labs
+# ---------------------------------------------------------------------
+
+def _in_active_consultation(user, visit):
+    return can_doctor_access(user, visit) and visit.status == Visit.Status.IN_CONSULTATION
+
+
+@role_required("DOCTOR")
+def doctor_dashboard(request):
+    waiting_visits = (
+        Visit.objects.select_related("patient")
+        .filter(doctor=request.user, status=Visit.Status.WAITING_DOCTOR)
+        .order_by("visit_date")
+    )
+    in_progress_visits = (
+        Visit.objects.select_related("patient")
+        .filter(doctor=request.user, status=Visit.Status.IN_CONSULTATION)
+        .order_by("visit_date")
+    )
+    context = {
+        "waiting_visits": waiting_visits,
+        "in_progress_visits": in_progress_visits,
+    }
+    return render(request, "dashboards/doctor_dashboard.html", context)
+
+
+@role_required("DOCTOR")
+def visit_detail(request, pk):
+    visit = get_object_or_404(
+        Visit.objects.select_related("patient", "doctor", "department"), pk=pk
+    )
+    if visit.doctor_id != request.user.id:
+        raise PermissionDenied("You do not have access to this visit.")
+
+    context = {
+        "visit": visit,
+        "vitals": visit.vital_signs.all(),
+        "medical_records": visit.medical_records.all(),
+        "prescription": visit.prescriptions.select_related(None).prefetch_related("items__drug").first(),
+        "lab_order": visit.lab_orders.prefetch_related("items__test").first(),
+        "vitals_form": VitalSignsForm(),
+        "diagnosis_form": MedicalRecordForm(),
+        "prescription_form": PrescriptionItemForm(),
+        "lab_order_form": LabOrderItemForm(),
+        "in_consultation": _in_active_consultation(request.user, visit),
+    }
+    return render(request, "dashboards/visit_detail.html", context)
+
+
+@role_required("DOCTOR")
+def visit_start(request, pk):
+    if request.method != "POST":
+        return redirect("visit_detail", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+    if not can_doctor_access(request.user, visit) or visit.status != Visit.Status.WAITING_DOCTOR:
+        messages.error(request, "This visit cannot be started.")
+        return redirect("doctor_dashboard")
+
+    with transaction.atomic():
+        visit.status = Visit.Status.IN_CONSULTATION
+        visit.save(update_fields=["status"])
+        QueueTicket.objects.filter(visit=visit).update(served=True)
+
+    messages.success(request, f"Consultation started for {visit.patient.full_name}.")
+    return redirect("visit_detail", pk=pk)
+
+
+@role_required("DOCTOR")
+def visit_record_vitals(request, pk):
+    visit = get_object_or_404(Visit, pk=pk)
+    if request.method == "POST" and _in_active_consultation(request.user, visit):
+        form = VitalSignsForm(request.POST)
+        if form.is_valid():
+            vitals = form.save(commit=False)
+            vitals.visit = visit
+            vitals.recorded_by = request.user
+            vitals.save()
+            messages.success(request, "Vitals recorded.")
+        else:
+            messages.error(request, "Could not save vitals — check the values entered.")
+    else:
+        messages.error(request, "Vitals can only be recorded during an active consultation.")
+    return redirect("visit_detail", pk=pk)
+
+
+@role_required("DOCTOR")
+def visit_record_diagnosis(request, pk):
+    visit = get_object_or_404(Visit, pk=pk)
+    if request.method == "POST" and _in_active_consultation(request.user, visit):
+        form = MedicalRecordForm(request.POST)
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.visit = visit
+            record.patient = visit.patient
+            record.doctor = request.user
+            record.save()
+            visit.diagnosis_summary = record.diagnosis
+            visit.save(update_fields=["diagnosis_summary"])
+            messages.success(request, "Diagnosis recorded.")
+        else:
+            messages.error(request, "Could not save diagnosis — check the values entered.")
+    else:
+        messages.error(request, "Diagnosis can only be recorded during an active consultation.")
+    return redirect("visit_detail", pk=pk)
+
+
+@role_required("DOCTOR")
+def visit_add_prescription_item(request, pk):
+    visit = get_object_or_404(Visit, pk=pk)
+    if request.method == "POST" and _in_active_consultation(request.user, visit):
+        form = PrescriptionItemForm(request.POST)
+        if form.is_valid():
+            prescription, _created = Prescription.objects.get_or_create(
+                visit=visit,
+                defaults={"doctor": request.user, "patient": visit.patient},
+            )
+            item = form.save(commit=False)
+            item.prescription = prescription
+            item.save()
+            messages.success(request, f"{item.drug.name} added to prescription.")
+        else:
+            messages.error(request, "Could not add drug — check the values entered.")
+    else:
+        messages.error(request, "Prescriptions can only be edited during an active consultation.")
+    return redirect("visit_detail", pk=pk)
+
+
+@role_required("DOCTOR")
+def visit_add_lab_test(request, pk):
+    visit = get_object_or_404(Visit, pk=pk)
+    if request.method == "POST" and _in_active_consultation(request.user, visit):
+        form = LabOrderItemForm(request.POST)
+        if form.is_valid():
+            lab_order, _created = LabOrder.objects.get_or_create(
+                visit=visit,
+                defaults={"doctor": request.user, "patient": visit.patient},
+            )
+            test = form.cleaned_data["test"]
+            _item, created = LabOrderItem.objects.get_or_create(lab_order=lab_order, test=test)
+            if created:
+                messages.success(request, f"{test.name} ordered.")
+            else:
+                messages.info(request, f"{test.name} was already ordered for this visit.")
+        else:
+            messages.error(request, "Could not order test — check the values entered.")
+    else:
+        messages.error(request, "Lab tests can only be ordered during an active consultation.")
+    return redirect("visit_detail", pk=pk)
+
+
+@role_required("DOCTOR")
+def visit_complete(request, pk):
+    if request.method != "POST":
+        return redirect("visit_detail", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+    if not _in_active_consultation(request.user, visit):
+        messages.error(request, "This visit cannot be completed right now.")
+        return redirect("doctor_dashboard")
+
+    visit.status = visit_status_after_consultation(visit)
+    visit.save(update_fields=["status"])
+    messages.success(
+        request, f"Visit for {visit.patient.full_name} marked {visit.get_status_display()}."
+    )
+    return redirect("doctor_dashboard")
