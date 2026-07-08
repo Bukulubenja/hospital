@@ -1,7 +1,15 @@
 from django import forms
 from django.utils import timezone
 
-from .models import Appointment, LabTest, MedicalRecord, Patient, PrescriptionItem, VitalSigns
+from .models import (
+    Appointment,
+    LabResult,
+    LabTest,
+    MedicalRecord,
+    Patient,
+    PrescriptionItem,
+    VitalSigns,
+)
 
 
 class PatientForm(forms.ModelForm):
@@ -76,3 +84,12 @@ class PrescriptionItemForm(forms.ModelForm):
 
 class LabOrderItemForm(forms.Form):
     test = forms.ModelChoiceField(queryset=LabTest.objects.all())
+
+
+class LabResultForm(forms.ModelForm):
+    class Meta:
+        model = LabResult
+        fields = ["result_value", "normal_range", "remarks"]
+        widgets = {
+            "remarks": forms.Textarea(attrs={"rows": 2}),
+        }

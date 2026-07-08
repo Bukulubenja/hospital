@@ -35,6 +35,12 @@ urlpatterns = [
         views.dispense_item,
         name="dispense_prescription_item",
     ),
+    path("lab/visits/<int:pk>/", views.lab_order_detail, name="lab_order_detail"),
+    path(
+        "lab/visits/<int:pk>/items/<int:item_pk>/result/",
+        views.record_lab_result,
+        name="record_lab_result",
+    ),
     path("prescription_refill/", views.prescription_refill, name="prescription_refill"),
     path("telemedicine_start/", views.telemedicine_start, name="telemedicine_start"),
     path("records_download/", views.records_download, name="records_download"),

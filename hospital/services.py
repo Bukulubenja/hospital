@@ -3,7 +3,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ServiceGate, Stock, StockTransaction, Visit
+from .models import LabResult, ServiceGate, Stock, StockTransaction, Visit
 
 
 def is_gate_cleared(visit, service_type: str) -> bool:
@@ -80,3 +80,19 @@ def dispense_prescription_item(item, pharmacist) -> bool:
         item.dispensed_by = pharmacist
         item.save(update_fields=["dispensed", "dispensed_at", "dispensed_by"])
         return True
+
+
+def lab_order_fully_resulted(lab_order) -> bool:
+    """True once every test ordered on this lab order has a recorded result."""
+    ordered_test_ids = set(lab_order.items.values_list("test_id", flat=True))
+    resulted_test_ids = set(
+        LabResult.objects.filter(lab_order=lab_order).values_list("test_id", flat=True)
+    )
+    return ordered_test_ids <= resulted_test_ids
+
+
+def visit_status_after_lab(visit) -> str:
+    """Route a visit onward once the lab finishes: to pharmacy if drugs were prescribed, otherwise done."""
+    if visit.prescriptions.exists():
+        return Visit.Status.WAITING_PHARMACY
+    return Visit.Status.COMPLETED

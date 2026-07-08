@@ -8,7 +8,9 @@ from .models import (
     Appointment,
     Department,
     Drug,
+    LabOrder,
     LabOrderItem,
+    LabResult,
     LabTest,
     MedicalRecord,
     Patient,
@@ -420,3 +422,128 @@ class PharmacyWorkflowTests(TestCase):
         self.client.post(reverse("dispense_prescription_item", args=[self.visit.pk, self.item.pk]))
         self.item.refresh_from_db()
         self.assertFalse(self.item.dispensed)
+
+
+class LabWorkflowTests(TestCase):
+    def setUp(self):
+        self.lab_tech = User.objects.create_user(
+            username="lab1", password="pass1234", role=User.Role.LAB
+        )
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.department = Department.objects.create(name="General Medicine")
+        self.patient = Patient.objects.create(
+            full_name="Needs Tests", gender="M", date_of_birth="1979-01-01",
+            phone="0700000002", patient_number="P-300001",
+        )
+        self.visit = Visit.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_LAB,
+        )
+        self.lab_order = LabOrder.objects.create(
+            visit=self.visit, patient=self.patient, doctor=self.doctor
+        )
+        self.test_a = LabTest.objects.create(name="Full Blood Count", price=15)
+        self.test_b = LabTest.objects.create(name="Malaria Test", price=10)
+        self.item_a = LabOrderItem.objects.create(lab_order=self.lab_order, test=self.test_a)
+        self.item_b = LabOrderItem.objects.create(lab_order=self.lab_order, test=self.test_b)
+        self.client.login(username="lab1", password="pass1234")
+
+    def _result_payload(self, item_pk, value="Normal", normal_range="0-10", remarks=""):
+        return {
+            f"{item_pk}-result_value": value,
+            f"{item_pk}-normal_range": normal_range,
+            f"{item_pk}-remarks": remarks,
+        }
+
+    def test_non_lab_role_denied(self):
+        User.objects.create_user(username="nurse1", password="pass1234", role=User.Role.NURSE)
+        self.client.logout()
+        self.client.login(username="nurse1", password="pass1234")
+
+        response = self.client.get(reverse("lab_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_recording_one_result_marks_order_processing_and_keeps_visit_waiting(self):
+        response = self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_a.pk]),
+            self._result_payload(self.item_a.pk),
+        )
+
+        self.assertRedirects(response, reverse("lab_order_detail", args=[self.visit.pk]))
+        self.lab_order.refresh_from_db()
+        self.visit.refresh_from_db()
+        self.assertEqual(self.lab_order.status, LabOrder.Status.PROCESSING)
+        self.assertEqual(self.visit.status, Visit.Status.WAITING_LAB)
+        self.assertTrue(
+            LabResult.objects.filter(lab_order=self.lab_order, test=self.test_a).exists()
+        )
+
+    def test_all_results_recorded_completes_order_and_routes_visit_to_completed(self):
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_a.pk]),
+            self._result_payload(self.item_a.pk),
+        )
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_b.pk]),
+            self._result_payload(self.item_b.pk, value="Negative"),
+        )
+
+        self.lab_order.refresh_from_db()
+        self.visit.refresh_from_db()
+        self.assertEqual(self.lab_order.status, LabOrder.Status.COMPLETED)
+        self.assertEqual(self.visit.status, Visit.Status.COMPLETED)
+
+    def test_all_results_recorded_routes_to_waiting_pharmacy_if_prescribed(self):
+        drug = Drug.objects.create(name="Amoxicillin", category="Antibiotic", strength="500mg", unit_price=10)
+        prescription = Prescription.objects.create(
+            visit=self.visit, doctor=self.doctor, patient=self.patient
+        )
+        PrescriptionItem.objects.create(
+            prescription=prescription, drug=drug, quantity=10,
+            dosage="1 tab", frequency="2x daily", duration="5 days",
+        )
+
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_a.pk]),
+            self._result_payload(self.item_a.pk),
+        )
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_b.pk]),
+            self._result_payload(self.item_b.pk),
+        )
+
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.status, Visit.Status.WAITING_PHARMACY)
+
+    def test_duplicate_result_rejected(self):
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_a.pk]),
+            self._result_payload(self.item_a.pk, value="Normal"),
+        )
+
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_a.pk]),
+            self._result_payload(self.item_a.pk, value="Changed"),
+        )
+
+        results = LabResult.objects.filter(lab_order=self.lab_order, test=self.test_a)
+        self.assertEqual(results.count(), 1)
+        self.assertEqual(results.first().result_value, "Normal")
+
+    def test_cannot_record_result_when_visit_not_awaiting_lab(self):
+        self.visit.status = Visit.Status.WAITING_DOCTOR
+        self.visit.save(update_fields=["status"])
+
+        detail_response = self.client.get(reverse("lab_order_detail", args=[self.visit.pk]))
+        self.assertEqual(detail_response.status_code, 403)
+
+        self.client.post(
+            reverse("record_lab_result", args=[self.visit.pk, self.item_a.pk]),
+            self._result_payload(self.item_a.pk),
+        )
+        self.assertFalse(
+            LabResult.objects.filter(lab_order=self.lab_order, test=self.test_a).exists()
+        )

@@ -14,6 +14,7 @@ from .decorators import role_required
 from .forms import (
     AppointmentForm,
     LabOrderItemForm,
+    LabResultForm,
     MedicalRecordForm,
     PatientForm,
     PrescriptionItemForm,
@@ -23,6 +24,7 @@ from .models import (
     Appointment,
     LabOrder,
     LabOrderItem,
+    LabResult,
     Patient,
     Prescription,
     PrescriptionItem,
@@ -31,7 +33,12 @@ from .models import (
     Visit,
 )
 from .permissions import can_doctor_access
-from .services import dispense_prescription_item, visit_status_after_consultation
+from .services import (
+    dispense_prescription_item,
+    lab_order_fully_resulted,
+    visit_status_after_consultation,
+    visit_status_after_lab,
+)
 
 # Single source of truth for where each role lands after login.
 # Reused by both login_view and post_login_redirect so they can never
@@ -111,7 +118,6 @@ def _make_dashboard_view(role, template_name):
 
 
 nurse_dashboard = _make_dashboard_view("NURSE", "dashboards/nurse_dashboard.html")
-lab_dashboard = _make_dashboard_view("LAB", "dashboards/lab.html")
 cashier_dashboard = _make_dashboard_view("CASHIER", "dashboards/cashier.html")
 admin_dashboard = _make_dashboard_view("ADMIN", "dashboards/admin.html")
 patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
@@ -527,3 +533,91 @@ def dispense_item(request, pk, item_pk):
         messages.error(request, f"Not enough stock to dispense {item.drug.name}.")
 
     return redirect("prescription_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------
+# Lab workflow: record results for visits awaiting lab work
+# ---------------------------------------------------------------------
+
+@role_required("LAB")
+def lab_dashboard(request):
+    visits = (
+        Visit.objects.select_related("patient")
+        .filter(status=Visit.Status.WAITING_LAB)
+        .order_by("visit_date")
+    )
+    return render(request, "dashboards/lab.html", {"visits": visits})
+
+
+@role_required("LAB")
+def lab_order_detail(request, pk):
+    visit = get_object_or_404(Visit.objects.select_related("patient"), pk=pk)
+    if visit.status not in (Visit.Status.WAITING_LAB, Visit.Status.COMPLETED):
+        raise PermissionDenied("This visit is not awaiting lab work.")
+
+    lab_order = get_object_or_404(LabOrder, visit=visit)
+    items = list(lab_order.items.select_related("test").all())
+    results_by_test = {
+        result.test_id: result for result in LabResult.objects.filter(lab_order=lab_order)
+    }
+    can_record = visit.status == Visit.Status.WAITING_LAB
+    for item in items:
+        item.result = results_by_test.get(item.test_id)
+        if item.result is None and can_record:
+            item.result_form = LabResultForm(prefix=str(item.pk))
+
+    context = {
+        "visit": visit,
+        "lab_order": lab_order,
+        "items": items,
+        "can_record": can_record,
+    }
+    return render(request, "dashboards/lab_order_detail.html", context)
+
+
+@role_required("LAB")
+def record_lab_result(request, pk, item_pk):
+    if request.method != "POST":
+        return redirect("lab_order_detail", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+    if visit.status != Visit.Status.WAITING_LAB:
+        messages.error(request, "This visit is not awaiting lab work.")
+        return redirect("lab_dashboard")
+
+    with transaction.atomic():
+        lab_order = get_object_or_404(
+            LabOrder.objects.select_for_update(), visit=visit
+        )
+        item = get_object_or_404(LabOrderItem, pk=item_pk, lab_order=lab_order)
+
+        if LabResult.objects.filter(lab_order=lab_order, test=item.test).exists():
+            messages.info(request, f"A result for {item.test.name} was already recorded.")
+            return redirect("lab_order_detail", pk=pk)
+
+        form = LabResultForm(request.POST, prefix=str(item_pk))
+        if not form.is_valid():
+            messages.error(request, "Could not save result — check the values entered.")
+            return redirect("lab_order_detail", pk=pk)
+
+        result = form.save(commit=False)
+        result.lab_order = lab_order
+        result.test = item.test
+        result.save()
+
+        if lab_order.status == LabOrder.Status.PENDING:
+            lab_order.status = LabOrder.Status.PROCESSING
+            lab_order.save(update_fields=["status"])
+
+        messages.success(request, f"Result recorded for {item.test.name}.")
+
+        if lab_order_fully_resulted(lab_order):
+            lab_order.status = LabOrder.Status.COMPLETED
+            lab_order.save(update_fields=["status"])
+            visit.status = visit_status_after_lab(visit)
+            visit.save(update_fields=["status"])
+            messages.success(
+                request, f"All lab results recorded — visit marked {visit.get_status_display()}."
+            )
+
+    return redirect("lab_order_detail", pk=pk)

@@ -1,0 +1,97 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Lab Order — {{ visit.patient.full_name }}</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>{{ visit.patient.full_name }}</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'lab_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="stat-row">
+				<div class="stat">
+					<div class="value">{{ visit.patient.patient_number }}</div>
+					<div class="label">Patient #</div>
+				</div>
+				<div class="stat">
+					<div class="value">{{ visit.doctor.get_full_name|default:"—" }}</div>
+					<div class="label">Ordering doctor</div>
+				</div>
+				<div class="stat">
+					<div class="value"><span class="badge badge-{{ lab_order.status|lower }}">{{ lab_order.get_status_display }}</span></div>
+					<div class="label">Order status</div>
+				</div>
+				<div class="stat">
+					<div class="value"><span class="badge badge-{{ visit.status|lower }}">{{ visit.get_status_display }}</span></div>
+					<div class="label">Visit status</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Ordered tests</strong>
+			</div>
+			{% for item in items %}
+				<div class="card" style="margin-top:12px;">
+					<div class="card-header">
+						<strong>{{ item.test.name }}</strong>
+						{% if item.result %}
+							<span class="badge badge-completed">Resulted</span>
+						{% else %}
+							<span class="badge badge-scheduled">Pending</span>
+						{% endif %}
+					</div>
+
+					{% if item.result %}
+						<table>
+							<thead>
+								<tr><th>Result</th><th>Normal range</th><th>Remarks</th><th>Recorded</th></tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>{{ item.result.result_value }}</td>
+									<td>{{ item.result.normal_range|default:"—" }}</td>
+									<td>{{ item.result.remarks|default:"—" }}</td>
+									<td>{{ item.result.result_date|date:"Y-m-d H:i" }}</td>
+								</tr>
+							</tbody>
+						</table>
+					{% elif can_record %}
+						<form class="inline-form" method="post" action="{% url 'record_lab_result' visit.pk item.pk %}">
+							{% csrf_token %}
+							{% for field in item.result_form %}
+								<div class="field">
+									<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+									{{ field }}
+									{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+								</div>
+							{% endfor %}
+							<button type="submit" class="btn-ghost">Save result</button>
+						</form>
+					{% else %}
+						<p class="empty-state">No result recorded.</p>
+					{% endif %}
+				</div>
+			{% endfor %}
+		</div>
+	</div>
+</body>
+</html>
