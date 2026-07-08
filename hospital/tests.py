@@ -675,3 +675,103 @@ class CashierWorkflowTests(TestCase):
         invoice = VisitInvoice.objects.get(visit=self.visit)
         self.assertFalse(Payment.objects.filter(invoice=invoice).exists())
         self.assertEqual(invoice.status, VisitInvoice.Status.UNPAID)
+
+
+class NurseWorkflowTests(TestCase):
+    def setUp(self):
+        self.nurse = User.objects.create_user(
+            username="nurse1", password="pass1234", role=User.Role.NURSE
+        )
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.department = Department.objects.create(name="General Medicine")
+        self.patient = Patient.objects.create(
+            full_name="Waiting Room", gender="F", date_of_birth="1995-01-01",
+            phone="0700000004", patient_number="P-500001",
+        )
+        self.visit = Visit.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_DOCTOR,
+        )
+        self.client.login(username="nurse1", password="pass1234")
+
+    def _vitals_payload(self, **overrides):
+        payload = {
+            "temperature": "37.2", "pulse_rate": "70",
+            "blood_pressure": "120/80", "weight": "65", "height": "168",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_non_nurse_denied(self):
+        User.objects.create_user(
+            username="pharm1", password="pass1234", role=User.Role.PHARMACIST
+        )
+        self.client.logout()
+        self.client.login(username="pharm1", password="pass1234")
+
+        response = self.client.get(reverse("nurse_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_dashboard_flags_visits_missing_vitals(self):
+        other_patient = Patient.objects.create(
+            full_name="Already Triaged", gender="M", date_of_birth="1992-01-01",
+            phone="0700000005", patient_number="P-500002",
+        )
+        other_visit = Visit.objects.create(
+            patient=other_patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_DOCTOR,
+        )
+        VitalSigns.objects.create(
+            visit=other_visit, temperature=36.9, pulse_rate=68,
+            blood_pressure="118/76", weight=70, height=175, recorded_by=self.nurse,
+        )
+
+        response = self.client.get(reverse("nurse_dashboard"))
+
+        visits_by_id = {v.pk: v for v in response.context["visits"]}
+        self.assertFalse(visits_by_id[self.visit.pk].has_vitals)
+        self.assertTrue(visits_by_id[other_visit.pk].has_vitals)
+
+    def test_record_vitals_creates_entry(self):
+        response = self.client.post(
+            reverse("nurse_record_vitals", args=[self.visit.pk]), self._vitals_payload()
+        )
+
+        self.assertRedirects(response, reverse("nurse_triage", args=[self.visit.pk]))
+        vitals = VitalSigns.objects.get(visit=self.visit)
+        self.assertEqual(vitals.recorded_by, self.nurse)
+        self.assertEqual(str(vitals.blood_pressure), "120/80")
+
+    def test_multiple_readings_allowed(self):
+        self.client.post(
+            reverse("nurse_record_vitals", args=[self.visit.pk]),
+            self._vitals_payload(temperature="37.0"),
+        )
+        self.client.post(
+            reverse("nurse_record_vitals", args=[self.visit.pk]),
+            self._vitals_payload(temperature="38.5"),
+        )
+
+        self.assertEqual(VitalSigns.objects.filter(visit=self.visit).count(), 2)
+
+    def test_cannot_triage_once_doctor_starts_consultation(self):
+        self.visit.status = Visit.Status.IN_CONSULTATION
+        self.visit.save(update_fields=["status"])
+
+        detail_response = self.client.get(reverse("nurse_triage", args=[self.visit.pk]))
+        self.assertEqual(detail_response.status_code, 403)
+
+        self.client.post(reverse("nurse_record_vitals", args=[self.visit.pk]), self._vitals_payload())
+        self.assertFalse(VitalSigns.objects.filter(visit=self.visit).exists())
+
+    def test_visit_no_longer_on_dashboard_after_consultation_starts(self):
+        self.visit.status = Visit.Status.IN_CONSULTATION
+        self.visit.save(update_fields=["status"])
+
+        response = self.client.get(reverse("nurse_dashboard"))
+
+        visit_ids = [v.pk for v in response.context["visits"]]
+        self.assertNotIn(self.visit.pk, visit_ids)

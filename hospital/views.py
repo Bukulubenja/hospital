@@ -35,8 +35,9 @@ from .models import (
     Stock,
     Visit,
     VisitInvoice,
+    VitalSigns,
 )
-from .permissions import can_doctor_access
+from .permissions import can_doctor_access, can_nurse_access
 from .services import (
     dispense_prescription_item,
     lab_order_fully_resulted,
@@ -122,7 +123,6 @@ def _make_dashboard_view(role, template_name):
     return dashboard_view
 
 
-nurse_dashboard = _make_dashboard_view("NURSE", "dashboards/nurse_dashboard.html")
 admin_dashboard = _make_dashboard_view("ADMIN", "dashboards/admin.html")
 patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
 stock_dashboard = _make_dashboard_view("STOCK_MANAGER", "dashboards/stock.html")
@@ -722,3 +722,55 @@ def record_payment(request, pk):
         request, f"Payment of {payment.amount_paid} recorded — receipt {payment.receipt_number}."
     )
     return redirect("visit_invoice_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------
+# Nurse workflow: triage patients waiting on a doctor
+# ---------------------------------------------------------------------
+
+@role_required("NURSE")
+def nurse_dashboard(request):
+    visits = (
+        Visit.objects.select_related("patient", "doctor")
+        .filter(status=Visit.Status.WAITING_DOCTOR)
+        .annotate(has_vitals=Exists(VitalSigns.objects.filter(visit=OuterRef("pk"))))
+        .order_by("visit_date")
+    )
+    return render(request, "dashboards/nurse_dashboard.html", {"visits": visits})
+
+
+@role_required("NURSE")
+def nurse_triage(request, pk):
+    visit = get_object_or_404(Visit.objects.select_related("patient", "doctor"), pk=pk)
+    if not can_nurse_access(request.user, visit):
+        raise PermissionDenied("This visit is not awaiting triage.")
+
+    context = {
+        "visit": visit,
+        "vitals": visit.vital_signs.all(),
+        "vitals_form": VitalSignsForm(),
+    }
+    return render(request, "dashboards/nurse_triage.html", context)
+
+
+@role_required("NURSE")
+def nurse_record_vitals(request, pk):
+    if request.method != "POST":
+        return redirect("nurse_triage", pk=pk)
+
+    visit = get_object_or_404(Visit, pk=pk)
+    if not can_nurse_access(request.user, visit):
+        messages.error(request, "This visit is not awaiting triage.")
+        return redirect("nurse_dashboard")
+
+    form = VitalSignsForm(request.POST)
+    if form.is_valid():
+        vitals = form.save(commit=False)
+        vitals.visit = visit
+        vitals.recorded_by = request.user
+        vitals.save()
+        messages.success(request, "Vitals recorded.")
+    else:
+        messages.error(request, "Could not save vitals — check the values entered.")
+
+    return redirect("nurse_triage", pk=pk)

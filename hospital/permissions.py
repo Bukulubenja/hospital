@@ -14,3 +14,14 @@ def can_doctor_access(user, visit: Visit) -> bool:
         and visit.doctor_id == user.id
         and visit.status in DOCTOR_ACCESSIBLE_STATUSES
     )
+
+
+def can_nurse_access(user, visit: Visit) -> bool:
+    """
+    True if this user is a nurse and the visit is still waiting on a doctor.
+
+    Unlike doctors, nurses aren't individually assigned to a visit — any
+    nurse can triage any patient waiting to be seen, same shared-pool model
+    used for lab and pharmacy queues.
+    """
+    return user.role == User.Role.NURSE and visit.status == Visit.Status.WAITING_DOCTOR

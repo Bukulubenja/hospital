@@ -1,94 +1,61 @@
-<!DOCTYPE html>
+{% load static %}
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nurse Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; background: #f4f7fb; color: #333; }
-        .dashboard { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .header h1 { margin: 0; font-size: 28px; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .card h2 { margin: 0 0 12px; font-size: 18px; color: #555; }
-        .card p { margin: 0; font-size: 32px; font-weight: 700; }
-        .section { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .section h3 { margin-top: 0; font-size: 22px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #e4e8f0; }
-        th { background: #f8fafc; font-weight: 600; }
-        .status { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 12px; color: #fff; }
-        .status.active { background: #22c55e; }
-        .status.pending { background: #f59e0b; }
-        .status.alert { background: #ef4444; }
-    </style>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Nurse Dashboard</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
 </head>
 <body>
-    <div class="dashboard">
-        <div class="header">
-            <div>
-                <h1>Nurse Dashboard</h1>
-                <p>Welcome back. Review patient care and task status at a glance.</p>
-            </div>
-        </div>
-        <div class="cards">
-            <div class="card">
-                <h2>Patients Assigned</h2>
-                <p>24</p>
-            </div>
-            <div class="card">
-                <h2>Pending Tasks</h2>
-                <p>7</p>
-            </div>
-            <div class="card">
-                <h2>Medications Due</h2>
-                <p>12</p>
-            </div>
-            <div class="card">
-                <h2>Critical Alerts</h2>
-                <p>3</p>
-            </div>
-        </div>
-        <div class="section">
-            <h3>Today's Rounding</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Patient</th>
-                        <th>Room</th>
-                        <th>Condition</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Jane Doe</td>
-                        <td>101A</td>
-                        <td>Post-op</td>
-                        <td><span class="status active">Stable</span></td>
-                    </tr>
-                    <tr>
-                        <td>John Smith</td>
-                        <td>102B</td>
-                        <td>Diabetes</td>
-                        <td><span class="status pending">Check Vitals</span></td>
-                    </tr>
-                    <tr>
-                        <td>Rita Patel</td>
-                        <td>103C</td>
-                        <td>Respiratory</td>
-                        <td><span class="status alert">Needs Attention</span></td>
-                    </tr>
-                    <tr>
-                        <td>Michael Lee</td>
-                        <td>104D</td>
-                        <td>Observation</td>
-                        <td><span class="status active">Stable</span></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+	<header>
+		<h1>Nurse — Dashboard</h1>
+		<div class="header-actions">
+			<span class="muted">{{ request.user.get_full_name|default:request.user.username }}</span>
+			<a class="btn-ghost" href="{% url 'logout' %}">Log out</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Patients waiting for a doctor</strong>
+			</div>
+			{% if visits %}
+				<table>
+					<thead>
+						<tr><th>Patient</th><th>Doctor</th><th>Checked in</th><th>Vitals</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for visit in visits %}
+							<tr>
+								<td>{{ visit.patient.full_name }}</td>
+								<td>{{ visit.doctor.get_full_name|default:"—" }}</td>
+								<td>{{ visit.visit_date|date:"Y-m-d H:i" }}</td>
+								<td>
+									{% if visit.has_vitals %}
+										<span class="badge badge-completed">Recorded</span>
+									{% else %}
+										<span class="badge badge-scheduled">Needed</span>
+									{% endif %}
+								</td>
+								<td><a class="btn" href="{% url 'nurse_triage' visit.pk %}">Triage</a></td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No patients waiting for a doctor.</p>
+			{% endif %}
+		</div>
+	</div>
 </body>
 </html>

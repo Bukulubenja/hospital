@@ -1,0 +1,86 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Triage — {{ visit.patient.full_name }}</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>{{ visit.patient.full_name }}</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'nurse_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="stat-row">
+				<div class="stat">
+					<div class="value">{{ visit.patient.patient_number }}</div>
+					<div class="label">Patient #</div>
+				</div>
+				<div class="stat">
+					<div class="value">{{ visit.patient.get_gender_display }}</div>
+					<div class="label">Gender</div>
+				</div>
+				<div class="stat">
+					<div class="value">{{ visit.doctor.get_full_name|default:"—" }}</div>
+					<div class="label">Assigned doctor</div>
+				</div>
+			</div>
+			{% if visit.symptoms %}<p><strong>Reason for visit:</strong> {{ visit.symptoms }}</p>{% endif %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Vital signs</strong>
+			</div>
+			{% if vitals %}
+				<table>
+					<thead>
+						<tr><th>Recorded</th><th>Temp (°C)</th><th>Pulse</th><th>BP</th><th>Weight (kg)</th><th>Height (cm)</th><th>By</th></tr>
+					</thead>
+					<tbody>
+						{% for v in vitals %}
+							<tr>
+								<td>{{ v.recorded_at|date:"Y-m-d H:i" }}</td>
+								<td>{{ v.temperature }}</td>
+								<td>{{ v.pulse_rate }}</td>
+								<td>{{ v.blood_pressure }}</td>
+								<td>{{ v.weight }}</td>
+								<td>{{ v.height }}</td>
+								<td>{{ v.recorded_by.get_full_name|default:v.recorded_by.username }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No vitals recorded yet.</p>
+			{% endif %}
+
+			<form class="inline-form" method="post" action="{% url 'nurse_record_vitals' visit.pk %}">
+				{% csrf_token %}
+				{% for field in vitals_form %}
+					<div class="field">
+						<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+						{{ field }}
+						{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+					</div>
+				{% endfor %}
+				<button type="submit" class="btn-ghost">Add vitals</button>
+			</form>
+		</div>
+	</div>
+</body>
+</html>
