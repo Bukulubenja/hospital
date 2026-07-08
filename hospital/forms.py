@@ -10,6 +10,7 @@ from .models import (
     Payment,
     PrescriptionItem,
     Service,
+    Stock,
     VitalSigns,
 )
 
@@ -120,3 +121,26 @@ class PaymentForm(forms.ModelForm):
                 f"Amount exceeds the outstanding balance of {self.invoice.balance_due}."
             )
         return amount
+
+
+class ReceiveStockForm(forms.Form):
+    batch_number = forms.CharField(max_length=100)
+    quantity = forms.IntegerField(min_value=1)
+    expiry_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+
+    def clean_expiry_date(self):
+        expiry_date = self.cleaned_data["expiry_date"]
+        if expiry_date <= timezone.localdate():
+            raise forms.ValidationError("Expiry date must be in the future.")
+        return expiry_date
+
+
+class StockAdjustmentForm(forms.Form):
+    batch = forms.ModelChoiceField(queryset=Stock.objects.none())
+    quantity = forms.IntegerField(min_value=1)
+    reason = forms.CharField(max_length=200)
+
+    def __init__(self, *args, drug=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if drug is not None:
+            self.fields["batch"].queryset = drug.stock_entries.all()

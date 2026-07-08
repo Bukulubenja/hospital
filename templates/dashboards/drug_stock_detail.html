@@ -1,0 +1,125 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Stock — {{ drug.name }}</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>{{ drug.name }} {{ drug.strength }}</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'stock_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Batches</strong>
+			</div>
+			{% if batches %}
+				<table>
+					<thead>
+						<tr><th>Batch #</th><th>Quantity</th><th>Expiry</th><th>Status</th></tr>
+					</thead>
+					<tbody>
+						{% for batch in batches %}
+							<tr>
+								<td>{{ batch.batch_number }}</td>
+								<td class="{% if batch.quantity <= 0 %}stock-low{% else %}stock-ok{% endif %}">{{ batch.quantity }}</td>
+								<td>{{ batch.expiry_date }}</td>
+								<td>
+									{% if batch.expiry_date < today %}
+										<span class="badge badge-cancelled">Expired</span>
+									{% elif batch.expiry_date <= expiry_warning_date %}
+										<span class="badge badge-pending">Expiring soon</span>
+									{% else %}
+										<span class="badge badge-completed">Fresh</span>
+									{% endif %}
+								</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No stock received yet.</p>
+			{% endif %}
+
+			<div class="card" style="margin-top:12px;">
+				<div class="card-header">
+					<strong>Receive stock</strong>
+				</div>
+				<form class="inline-form" method="post" action="{% url 'receive_stock' drug.pk %}">
+					{% csrf_token %}
+					{% for field in receive_form %}
+						<div class="field">
+							<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+							{{ field }}
+							{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+						</div>
+					{% endfor %}
+					<button type="submit" class="btn-ghost">Receive</button>
+				</form>
+				<p class="muted" style="margin-top:8px">
+					Using an existing batch number tops up that batch instead of creating a duplicate.
+				</p>
+			</div>
+
+			{% if batches %}
+				<div class="card" style="margin-top:12px;">
+					<div class="card-header">
+						<strong>Write off / adjust stock</strong>
+					</div>
+					<form class="inline-form" method="post" action="{% url 'adjust_stock' drug.pk %}">
+						{% csrf_token %}
+						{% for field in adjust_form %}
+							<div class="field">
+								<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+								{{ field }}
+								{% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+							</div>
+						{% endfor %}
+						<button type="submit" class="btn-ghost">Remove</button>
+					</form>
+				</div>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Transaction history</strong>
+			</div>
+			{% if transactions %}
+				<table>
+					<thead>
+						<tr><th>Date</th><th>Type</th><th>Qty</th><th>Reason</th></tr>
+					</thead>
+					<tbody>
+						{% for txn in transactions %}
+							<tr>
+								<td>{{ txn.date|date:"Y-m-d H:i" }}</td>
+								<td>{{ txn.get_type_display }}</td>
+								<td>{{ txn.quantity }}</td>
+								<td>{{ txn.reason|default:"—" }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No transactions for this drug yet.</p>
+			{% endif %}
+		</div>
+	</div>
+</body>
+</html>

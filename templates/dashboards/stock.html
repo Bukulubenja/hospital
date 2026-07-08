@@ -1,0 +1,99 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Stock Dashboard</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>Stock — Dashboard</h1>
+		<div class="header-actions">
+			<span class="muted">{{ request.user.get_full_name|default:request.user.username }}</span>
+			<a class="btn-ghost" href="{% url 'logout' %}">Log out</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<div class="stat-row">
+				<div class="stat">
+					<div class="value">{{ drugs|length }}</div>
+					<div class="label">Drugs in catalog</div>
+				</div>
+				<div class="stat">
+					<div class="value">{{ expiring_soon_count }}</div>
+					<div class="label">Batches expiring within 30 days</div>
+				</div>
+				<div class="stat">
+					<div class="value">{{ expired_count }}</div>
+					<div class="label">Expired batches still in stock</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Drugs</strong>
+			</div>
+			{% if drugs %}
+				<table>
+					<thead>
+						<tr><th>Drug</th><th>Category</th><th>Total quantity</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for drug in drugs %}
+							<tr>
+								<td>{{ drug.name }} {{ drug.strength }}</td>
+								<td>{{ drug.category }}</td>
+								<td class="{% if drug.total_quantity <= 0 %}stock-low{% else %}stock-ok{% endif %}">
+									{{ drug.total_quantity }}
+								</td>
+								<td><a class="btn" href="{% url 'drug_stock_detail' drug.pk %}">Manage stock</a></td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No drugs in the catalog yet.</p>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Recent transactions</strong>
+			</div>
+			{% if recent_transactions %}
+				<table>
+					<thead>
+						<tr><th>Date</th><th>Drug</th><th>Type</th><th>Qty</th><th>Reason</th></tr>
+					</thead>
+					<tbody>
+						{% for txn in recent_transactions %}
+							<tr>
+								<td>{{ txn.date|date:"Y-m-d H:i" }}</td>
+								<td>{{ txn.drug.name }}</td>
+								<td>{{ txn.get_type_display }}</td>
+								<td>{{ txn.quantity }}</td>
+								<td>{{ txn.reason|default:"—" }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No stock transactions yet.</p>
+			{% endif %}
+		</div>
+	</div>
+</body>
+</html>

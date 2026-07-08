@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Sum
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -20,10 +21,13 @@ from .forms import (
     PatientForm,
     PaymentForm,
     PrescriptionItemForm,
+    ReceiveStockForm,
+    StockAdjustmentForm,
     VitalSignsForm,
 )
 from .models import (
     Appointment,
+    Drug,
     InvoiceItem,
     LabOrder,
     LabOrderItem,
@@ -33,6 +37,7 @@ from .models import (
     PrescriptionItem,
     QueueTicket,
     Stock,
+    StockTransaction,
     Visit,
     VisitInvoice,
     VitalSigns,
@@ -45,6 +50,17 @@ from .services import (
     visit_status_after_consultation,
     visit_status_after_lab,
 )
+
+
+def _flash_form_errors(request, form, fallback="Could not save — check the values entered."):
+    """Surface each of an invalid form's field/non-field errors as a message, so
+    the user sees *why* it failed instead of a generic rejection."""
+    errors = [error for field_errors in form.errors.values() for error in field_errors]
+    for error in errors:
+        messages.error(request, error)
+    if not errors:
+        messages.error(request, fallback)
+
 
 # Single source of truth for where each role lands after login.
 # Reused by both login_view and post_login_redirect so they can never
@@ -125,7 +141,6 @@ def _make_dashboard_view(role, template_name):
 
 admin_dashboard = _make_dashboard_view("ADMIN", "dashboards/admin.html")
 patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
-stock_dashboard = _make_dashboard_view("STOCK_MANAGER", "dashboards/stock.html")
 prescription_refill = _make_dashboard_view("PHARMACIST", "dashboards/prescription_refill.html")
 telemedicine_start = _make_dashboard_view("DOCTOR", "dashboards/telemedicine_start.html")
 telemedicine_chat = _make_dashboard_view("DOCTOR", "dashboards/telemedicine_chat.html")
@@ -705,10 +720,7 @@ def record_payment(request, pk):
 
         form = PaymentForm(request.POST, invoice=invoice)
         if not form.is_valid():
-            for error in form.errors.get("amount_paid", []):
-                messages.error(request, error)
-            if not form.errors.get("amount_paid"):
-                messages.error(request, "Could not record payment — check the values entered.")
+            _flash_form_errors(request, form, "Could not record payment — check the values entered.")
             return redirect("visit_invoice_detail", pk=pk)
 
         payment = form.save(commit=False)
@@ -774,3 +786,116 @@ def nurse_record_vitals(request, pk):
         messages.error(request, "Could not save vitals — check the values entered.")
 
     return redirect("nurse_triage", pk=pk)
+
+
+# ---------------------------------------------------------------------
+# Stock Manager workflow: receive stock and write off spoiled/lost stock
+# ---------------------------------------------------------------------
+
+@role_required("STOCK_MANAGER")
+def stock_dashboard(request):
+    today = timezone.localdate()
+    soon = today + timedelta(days=30)
+
+    drugs = Drug.objects.annotate(
+        total_quantity=Coalesce(Sum("stock_entries__quantity"), 0)
+    ).order_by("name")
+
+    context = {
+        "drugs": drugs,
+        "expiring_soon_count": Stock.objects.filter(
+            quantity__gt=0, expiry_date__gte=today, expiry_date__lte=soon
+        ).count(),
+        "expired_count": Stock.objects.filter(quantity__gt=0, expiry_date__lt=today).count(),
+        "recent_transactions": StockTransaction.objects.select_related("drug")[:20],
+    }
+    return render(request, "dashboards/stock.html", context)
+
+
+@role_required("STOCK_MANAGER")
+def drug_stock_detail(request, pk):
+    drug = get_object_or_404(Drug, pk=pk)
+    today = timezone.localdate()
+
+    context = {
+        "drug": drug,
+        "batches": drug.stock_entries.all(),
+        "transactions": drug.transactions.all()[:20],
+        "today": today,
+        "expiry_warning_date": today + timedelta(days=30),
+        "receive_form": ReceiveStockForm(),
+        "adjust_form": StockAdjustmentForm(drug=drug),
+    }
+    return render(request, "dashboards/drug_stock_detail.html", context)
+
+
+@role_required("STOCK_MANAGER")
+def receive_stock(request, pk):
+    if request.method != "POST":
+        return redirect("drug_stock_detail", pk=pk)
+
+    drug = get_object_or_404(Drug, pk=pk)
+    form = ReceiveStockForm(request.POST)
+    if form.is_valid():
+        batch_number = form.cleaned_data["batch_number"]
+        quantity = form.cleaned_data["quantity"]
+        expiry_date = form.cleaned_data["expiry_date"]
+
+        with transaction.atomic():
+            stock, created = Stock.objects.select_for_update().get_or_create(
+                drug=drug,
+                batch_number=batch_number,
+                defaults={"quantity": quantity, "expiry_date": expiry_date},
+            )
+            if not created:
+                stock.quantity += quantity
+                stock.save(update_fields=["quantity"])
+
+            StockTransaction.objects.create(
+                drug=drug,
+                type=StockTransaction.TransactionType.IN,
+                quantity=quantity,
+                reason=f"Received batch {batch_number}",
+            )
+
+        messages.success(
+            request, f"Received {quantity} units of {drug.name} (batch {batch_number})."
+        )
+    else:
+        _flash_form_errors(request, form, "Could not receive stock — check the values entered.")
+
+    return redirect("drug_stock_detail", pk=pk)
+
+
+@role_required("STOCK_MANAGER")
+def adjust_stock(request, pk):
+    if request.method != "POST":
+        return redirect("drug_stock_detail", pk=pk)
+
+    drug = get_object_or_404(Drug, pk=pk)
+    form = StockAdjustmentForm(request.POST, drug=drug)
+    if form.is_valid():
+        quantity = form.cleaned_data["quantity"]
+        reason = form.cleaned_data["reason"]
+
+        with transaction.atomic():
+            batch = Stock.objects.select_for_update().get(pk=form.cleaned_data["batch"].pk)
+            if quantity > batch.quantity:
+                messages.error(
+                    request,
+                    f"Cannot remove {quantity} units — only {batch.quantity} left in batch {batch.batch_number}.",
+                )
+                return redirect("drug_stock_detail", pk=pk)
+
+            batch.quantity -= quantity
+            batch.save(update_fields=["quantity"])
+            StockTransaction.objects.create(
+                drug=drug, type=StockTransaction.TransactionType.OUT,
+                quantity=quantity, reason=reason,
+            )
+
+        messages.success(request, f"Removed {quantity} units from batch {batch.batch_number}.")
+    else:
+        _flash_form_errors(request, form, "Could not adjust stock — check the values entered.")
+
+    return redirect("drug_stock_detail", pk=pk)

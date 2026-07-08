@@ -775,3 +775,120 @@ class NurseWorkflowTests(TestCase):
 
         visit_ids = [v.pk for v in response.context["visits"]]
         self.assertNotIn(self.visit.pk, visit_ids)
+
+
+class StockManagerWorkflowTests(TestCase):
+    def setUp(self):
+        self.stock_manager = User.objects.create_user(
+            username="stock1", password="pass1234", role=User.Role.STOCK_MANAGER
+        )
+        self.drug = Drug.objects.create(
+            name="Amoxicillin", category="Antibiotic", strength="500mg", unit_price=10
+        )
+        self.client.login(username="stock1", password="pass1234")
+
+    def test_non_stock_manager_denied(self):
+        User.objects.create_user(username="nurse1", password="pass1234", role=User.Role.NURSE)
+        self.client.logout()
+        self.client.login(username="nurse1", password="pass1234")
+
+        response = self.client.get(reverse("stock_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_dashboard_aggregates_total_quantity_across_batches(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=10, batch_number="A1",
+            expiry_date=timezone.localdate() + timedelta(days=60),
+        )
+        Stock.objects.create(
+            drug=self.drug, quantity=15, batch_number="A2",
+            expiry_date=timezone.localdate() + timedelta(days=90),
+        )
+
+        response = self.client.get(reverse("stock_dashboard"))
+
+        drugs_by_id = {d.pk: d for d in response.context["drugs"]}
+        self.assertEqual(drugs_by_id[self.drug.pk].total_quantity, 25)
+
+    def test_receive_stock_creates_new_batch(self):
+        expiry = (timezone.localdate() + timedelta(days=60)).isoformat()
+
+        response = self.client.post(reverse("receive_stock", args=[self.drug.pk]), {
+            "batch_number": "NEWBATCH", "quantity": "40", "expiry_date": expiry,
+        })
+
+        self.assertRedirects(response, reverse("drug_stock_detail", args=[self.drug.pk]))
+        batch = Stock.objects.get(drug=self.drug, batch_number="NEWBATCH")
+        self.assertEqual(batch.quantity, 40)
+        txn = StockTransaction.objects.get(drug=self.drug, type=StockTransaction.TransactionType.IN)
+        self.assertEqual(txn.quantity, 40)
+
+    def test_receive_stock_tops_up_existing_batch(self):
+        expiry = timezone.localdate() + timedelta(days=60)
+        Stock.objects.create(
+            drug=self.drug, quantity=10, batch_number="TOPUP", expiry_date=expiry
+        )
+
+        self.client.post(reverse("receive_stock", args=[self.drug.pk]), {
+            "batch_number": "TOPUP", "quantity": "5", "expiry_date": expiry.isoformat(),
+        })
+
+        self.assertEqual(Stock.objects.filter(drug=self.drug, batch_number="TOPUP").count(), 1)
+        self.assertEqual(Stock.objects.get(drug=self.drug, batch_number="TOPUP").quantity, 15)
+
+    def test_receive_stock_rejects_past_expiry(self):
+        past = (timezone.localdate() - timedelta(days=1)).isoformat()
+
+        self.client.post(reverse("receive_stock", args=[self.drug.pk]), {
+            "batch_number": "OLDBATCH", "quantity": "10", "expiry_date": past,
+        })
+
+        self.assertFalse(Stock.objects.filter(drug=self.drug, batch_number="OLDBATCH").exists())
+
+    def test_adjust_stock_reduces_quantity_and_logs_transaction(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=20, batch_number="A1",
+            expiry_date=timezone.localdate() + timedelta(days=60),
+        )
+        batch = Stock.objects.get(drug=self.drug, batch_number="A1")
+
+        response = self.client.post(reverse("adjust_stock", args=[self.drug.pk]), {
+            "batch": batch.pk, "quantity": "5", "reason": "Damaged in storage",
+        })
+
+        self.assertRedirects(response, reverse("drug_stock_detail", args=[self.drug.pk]))
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity, 15)
+        txn = StockTransaction.objects.get(drug=self.drug, type=StockTransaction.TransactionType.OUT)
+        self.assertEqual(txn.quantity, 5)
+        self.assertEqual(txn.reason, "Damaged in storage")
+
+    def test_adjust_stock_rejects_over_removal(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=5, batch_number="A1",
+            expiry_date=timezone.localdate() + timedelta(days=60),
+        )
+        batch = Stock.objects.get(drug=self.drug, batch_number="A1")
+
+        self.client.post(reverse("adjust_stock", args=[self.drug.pk]), {
+            "batch": batch.pk, "quantity": "10", "reason": "Miscount",
+        })
+
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity, 5)
+        self.assertFalse(StockTransaction.objects.filter(drug=self.drug).exists())
+
+    def test_adjust_stock_requires_reason(self):
+        Stock.objects.create(
+            drug=self.drug, quantity=5, batch_number="A1",
+            expiry_date=timezone.localdate() + timedelta(days=60),
+        )
+        batch = Stock.objects.get(drug=self.drug, batch_number="A1")
+
+        self.client.post(reverse("adjust_stock", args=[self.drug.pk]), {
+            "batch": batch.pk, "quantity": "1", "reason": "",
+        })
+
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity, 5)
