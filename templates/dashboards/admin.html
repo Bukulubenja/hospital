@@ -1,0 +1,375 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Admin Dashboard</title>
+	<link rel="stylesheet" href="{% static 'css/admin.css' %}">
+</head>
+<body>
+	<header>
+		<div>
+			<h1>Hospital Overview</h1>
+			<div class="subtitle">{% now "l, F j, Y" %}</div>
+		</div>
+		<div class="header-actions">
+			<span>{{ request.user.get_full_name|default:request.user.username }}</span>
+			<a href="{% url 'logout' %}">Log out</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<!-- KPI row -->
+		<div class="kpi-row">
+			<div class="stat-tile">
+				<div class="stat-label">Total patients</div>
+				<div class="stat-value">{{ total_patients }}</div>
+			</div>
+
+			<div class="stat-tile">
+				<div class="stat-label">Today's appointments</div>
+				<div class="stat-value">{{ todays_appointments }}</div>
+				{% if appointments_delta is not None %}
+					<div class="stat-delta {% if appointments_delta > 0 %}up{% elif appointments_delta < 0 %}down{% else %}flat{% endif %}">
+						{{ appointments_delta|stringformat:"+d" }}% vs yesterday
+					</div>
+				{% else %}
+					<div class="stat-sub">No appointments yesterday</div>
+				{% endif %}
+			</div>
+
+			<div class="stat-tile">
+				<div class="stat-label">Active visits</div>
+				<div class="stat-value">{{ active_visits }}</div>
+				<div class="stat-sub">Not yet completed</div>
+			</div>
+
+			<div class="stat-tile">
+				<div class="stat-label">Today's revenue</div>
+				<div class="stat-value">${{ todays_revenue }}</div>
+				{% if revenue_delta is not None %}
+					<div class="stat-delta {% if revenue_delta > 0 %}up{% elif revenue_delta < 0 %}down{% else %}flat{% endif %}">
+						{{ revenue_delta|stringformat:"+d" }}% vs yesterday
+					</div>
+				{% else %}
+					<div class="stat-sub">No revenue yesterday</div>
+				{% endif %}
+			</div>
+
+			<div class="stat-tile">
+				<div class="stat-label">Outstanding balance</div>
+				<div class="stat-value">${{ outstanding_balance }}</div>
+				<div class="stat-sub">Across all invoices</div>
+			</div>
+
+			<div class="stat-tile">
+				<div class="stat-label">Bed occupancy</div>
+				<div class="stat-value">{{ bed_occupancy_pct }}%</div>
+				<div class="stat-sub">{{ occupied_beds }} of {{ total_beds }} beds</div>
+			</div>
+
+			<div class="stat-tile {% if low_stock_drugs > 0 %}alert{% endif %}">
+				<div class="stat-label">Low stock drugs</div>
+				<div class="stat-value">{{ low_stock_drugs }}</div>
+				<div class="stat-sub">Zero units on hand</div>
+			</div>
+
+			<div class="stat-tile">
+				<div class="stat-label">Active staff</div>
+				<div class="stat-value">{{ total_staff }}</div>
+				<div class="stat-sub">Excludes patient accounts</div>
+			</div>
+		</div>
+
+		<!-- Charts -->
+		<div class="chart-grid">
+			<div class="card">
+				<div class="card-header">
+					<span class="card-title">Appointments booked</span>
+					<span class="card-sub">Last 14 days</span>
+				</div>
+				<svg class="chart-svg" viewBox="0 0 {{ appointments_chart.width }} {{ appointments_chart.height }}" role="img" aria-label="Appointments booked per day, last 14 days">
+					<line class="chart-baseline" x1="0" y1="{{ appointments_chart.baseline }}" x2="{{ appointments_chart.width }}" y2="{{ appointments_chart.baseline }}"></line>
+					{% for bar in appointments_chart.bars %}
+						{% if bar.path %}<path class="chart-bar" d="{{ bar.path }}" tabindex="0"></path>{% endif %}
+						<rect class="chart-bar-hit" x="{{ bar.x }}" y="0" width="{{ bar.width }}" height="{{ appointments_chart.baseline }}"
+						      data-label="{{ bar.date|date:'M j' }}" data-value="{{ bar.value }}"></rect>
+						{% if forloop.counter0|divisibleby:2 %}
+							<text class="chart-tick" x="{{ bar.label_x }}" y="{{ appointments_chart.baseline|add:16 }}">{{ bar.date|date:"M j" }}</text>
+						{% endif %}
+					{% endfor %}
+				</svg>
+				<details class="chart-table">
+					<summary>View as table</summary>
+					<table>
+						<thead><tr><th>Date</th><th>Appointments</th></tr></thead>
+						<tbody>
+							{% for bar in appointments_chart.bars %}
+								<tr><td>{{ bar.date|date:"M j, Y" }}</td><td>{{ bar.value }}</td></tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</details>
+			</div>
+
+			<div class="card">
+				<div class="card-header">
+					<span class="card-title">Revenue collected</span>
+					<span class="card-sub">Last 14 days</span>
+				</div>
+				<svg class="chart-svg" viewBox="0 0 {{ revenue_chart.width }} {{ revenue_chart.height }}" role="img" aria-label="Revenue collected per day, last 14 days">
+					<line class="chart-baseline" x1="0" y1="{{ revenue_chart.baseline }}" x2="{{ revenue_chart.width }}" y2="{{ revenue_chart.baseline }}"></line>
+					{% if revenue_chart.area_path %}<path class="chart-area" d="{{ revenue_chart.area_path }}"></path>{% endif %}
+					{% if revenue_chart.path %}<path class="chart-line" d="{{ revenue_chart.path }}"></path>{% endif %}
+					{% for point in revenue_chart.points %}
+						<circle class="chart-dot" cx="{{ point.x }}" cy="{{ point.y }}" r="4"></circle>
+						<circle class="chart-dot-hit" cx="{{ point.x }}" cy="{{ point.y }}" r="12"
+						        data-label="{{ point.date|date:'M j' }}" data-value="${{ point.value }}" tabindex="0"></circle>
+						{% if forloop.counter0|divisibleby:2 %}
+							<text class="chart-tick" x="{{ point.x }}" y="{{ revenue_chart.baseline|add:16 }}">{{ point.date|date:"M j" }}</text>
+						{% endif %}
+					{% endfor %}
+				</svg>
+				<details class="chart-table">
+					<summary>View as table</summary>
+					<table>
+						<thead><tr><th>Date</th><th>Revenue</th></tr></thead>
+						<tbody>
+							{% for point in revenue_chart.points %}
+								<tr><td>{{ point.date|date:"M j, Y" }}</td><td>${{ point.value }}</td></tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</details>
+			</div>
+
+			<div class="card">
+				<div class="card-header">
+					<span class="card-title">Visits by status</span>
+					<span class="card-sub">All time, current snapshot</span>
+				</div>
+				<svg class="chart-svg" viewBox="0 0 {{ status_chart.width }} {{ status_chart.height }}" role="img" aria-label="Current visit count by status">
+					<line class="chart-baseline" x1="0" y1="{{ status_chart.baseline }}" x2="{{ status_chart.width }}" y2="{{ status_chart.baseline }}"></line>
+					{% for bar in status_chart.bars %}
+						{% if bar.path %}<path class="chart-bar" d="{{ bar.path }}" tabindex="0"></path>{% endif %}
+						<rect class="chart-bar-hit" x="{{ bar.x }}" y="0" width="{{ bar.width }}" height="{{ status_chart.baseline }}"
+						      data-label="{{ bar.label }}" data-value="{{ bar.count }}"></rect>
+						<text class="chart-tick" x="{{ bar.label_x }}" y="{{ status_chart.baseline|add:16 }}">{{ bar.label|truncatechars:12 }}</text>
+					{% endfor %}
+				</svg>
+				<details class="chart-table">
+					<summary>View as table</summary>
+					<table>
+						<thead><tr><th>Status</th><th>Visits</th></tr></thead>
+						<tbody>
+							{% for bar in status_chart.bars %}
+								<tr><td>{{ bar.label }}</td><td>{{ bar.count }}</td></tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				</details>
+			</div>
+
+			<div class="card">
+				<div class="card-header">
+					<span class="card-title">Active visits by department</span>
+					<span class="card-sub">Not yet completed</span>
+				</div>
+				{% if department_chart.bars %}
+					<svg class="chart-svg" viewBox="0 0 {{ department_chart.width }} {{ department_chart.height }}" role="img" aria-label="Active visit count by department">
+						<line class="chart-baseline" x1="0" y1="{{ department_chart.baseline }}" x2="{{ department_chart.width }}" y2="{{ department_chart.baseline }}"></line>
+						{% for bar in department_chart.bars %}
+							{% if bar.path %}<path class="chart-bar" d="{{ bar.path }}" tabindex="0"></path>{% endif %}
+							<rect class="chart-bar-hit" x="{{ bar.x }}" y="0" width="{{ bar.width }}" height="{{ department_chart.baseline }}"
+							      data-label="{{ bar.label }}" data-value="{{ bar.count }}"></rect>
+							<text class="chart-tick" x="{{ bar.label_x }}" y="{{ department_chart.baseline|add:16 }}">{{ bar.label|truncatechars:10 }}</text>
+						{% endfor %}
+					</svg>
+					<details class="chart-table">
+						<summary>View as table</summary>
+						<table>
+							<thead><tr><th>Department</th><th>Active visits</th></tr></thead>
+							<tbody>
+								{% for bar in department_chart.bars %}
+									<tr><td>{{ bar.label }}</td><td>{{ bar.count }}</td></tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</details>
+				{% else %}
+					<p class="empty-state">No active visits right now.</p>
+				{% endif %}
+			</div>
+		</div>
+
+		<!-- Wards & Departments -->
+		<div class="two-col">
+			<div class="card">
+				<div class="card-header"><span class="card-title">Ward &amp; bed occupancy</span></div>
+				<table>
+					<thead><tr><th>Ward</th><th>Department</th><th>Occupied</th><th>Capacity</th><th>Occupancy</th></tr></thead>
+					<tbody>
+						{% for ward in wards %}
+							<tr>
+								<td>{{ ward.name }}</td>
+								<td>{{ ward.department.name|default:"—" }}</td>
+								<td>{{ ward.occupied_count }}</td>
+								<td>{{ ward.bed_count }}</td>
+								<td>
+									<div class="meter-track">
+										<div class="meter-fill {% if ward.occupancy_pct >= 90 %}critical{% elif ward.occupancy_pct >= 70 %}warning{% endif %}" style="width:{{ ward.occupancy_pct }}%"></div>
+									</div>
+									<span class="stat-sub">{{ ward.occupancy_pct }}%</span>
+								</td>
+							</tr>
+						{% empty %}
+							<tr><td colspan="5" class="empty-state">No wards configured yet.</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="card">
+				<div class="card-header"><span class="card-title">Department overview</span></div>
+				<table>
+					<thead><tr><th>Department</th><th>Doctors</th><th>Nurses</th><th>Active visits</th></tr></thead>
+					<tbody>
+						{% for dept in departments %}
+							<tr>
+								<td>{{ dept.name }}</td>
+								<td>{{ dept.doctor_count }}</td>
+								<td>{{ dept.nurse_count }}</td>
+								<td>{{ dept.active_visit_count }}</td>
+							</tr>
+						{% empty %}
+							<tr><td colspan="4" class="empty-state">No departments configured yet.</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Staff & quick links -->
+		<div class="two-col">
+			<div class="card">
+				<div class="card-header"><span class="card-title">Staff by role</span></div>
+				<table>
+					<thead><tr><th>Role</th><th>Active staff</th></tr></thead>
+					<tbody>
+						{% for row in staff_by_role %}
+							<tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>
+						{% empty %}
+							<tr><td colspan="2" class="empty-state">No staff accounts yet.</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="card">
+				<div class="card-header"><span class="card-title">Manage catalogs</span></div>
+				<p class="card-sub" style="margin-top:0">Master data is managed in the Django admin.</p>
+				<div class="quick-links">
+					<a href="{% url 'admin:hospital_user_changelist' %}" target="_blank" rel="noopener">Staff accounts</a>
+					<a href="{% url 'admin:hospital_department_changelist' %}" target="_blank" rel="noopener">Departments</a>
+					<a href="{% url 'admin:hospital_ward_changelist' %}" target="_blank" rel="noopener">Wards</a>
+					<a href="{% url 'admin:hospital_bed_changelist' %}" target="_blank" rel="noopener">Beds</a>
+					<a href="{% url 'admin:hospital_service_changelist' %}" target="_blank" rel="noopener">Services</a>
+					<a href="{% url 'admin:hospital_drug_changelist' %}" target="_blank" rel="noopener">Drugs</a>
+					<a href="{% url 'admin:hospital_labtest_changelist' %}" target="_blank" rel="noopener">Lab tests</a>
+					<a href="{% url 'admin:hospital_auditlog_changelist' %}" target="_blank" rel="noopener">Audit log</a>
+				</div>
+			</div>
+		</div>
+
+		<!-- Recent activity -->
+		<div class="two-col">
+			<div class="card">
+				<div class="card-header"><span class="card-title">Recently registered patients</span></div>
+				<table>
+					<thead><tr><th>Patient</th><th>Patient #</th><th>Registered</th></tr></thead>
+					<tbody>
+						{% for patient in recent_patients %}
+							<tr>
+								<td>{{ patient.full_name }}</td>
+								<td>{{ patient.patient_number }}</td>
+								<td>{{ patient.created_at|date:"Y-m-d H:i" }}</td>
+							</tr>
+						{% empty %}
+							<tr><td colspan="3" class="empty-state">No patients registered yet.</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="card">
+				<div class="card-header"><span class="card-title">Recent payments</span></div>
+				<table>
+					<thead><tr><th>Receipt</th><th>Patient</th><th>Amount</th><th>Date</th></tr></thead>
+					<tbody>
+						{% for payment in recent_payments %}
+							<tr>
+								<td>{{ payment.receipt_number }}</td>
+								<td>{{ payment.invoice.patient.full_name }}</td>
+								<td>${{ payment.amount_paid }}</td>
+								<td>{{ payment.payment_date|date:"Y-m-d H:i" }}</td>
+							</tr>
+						{% empty %}
+							<tr><td colspan="4" class="empty-state">No payments recorded yet.</td></tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<div class="chart-tooltip" id="chart-tooltip"><span class="tt-value"></span><span class="tt-label"></span></div>
+	<script>
+		(function () {
+			var tooltip = document.getElementById('chart-tooltip');
+			var valueEl = tooltip.querySelector('.tt-value');
+			var labelEl = tooltip.querySelector('.tt-label');
+
+			function showTooltip(el) {
+				valueEl.textContent = el.getAttribute('data-value');
+				labelEl.textContent = el.getAttribute('data-label');
+				tooltip.classList.add('visible');
+			}
+
+			function positionTooltip(evt, el) {
+				var x, y;
+				if (evt && typeof evt.clientX === 'number') {
+					x = evt.clientX;
+					y = evt.clientY - 12;
+				} else {
+					var rect = el.getBoundingClientRect();
+					x = rect.left + rect.width / 2;
+					y = rect.top - 8;
+				}
+				tooltip.style.left = x + 'px';
+				tooltip.style.top = y + 'px';
+			}
+
+			function hideTooltip() {
+				tooltip.classList.remove('visible');
+			}
+
+			document.querySelectorAll('.chart-bar-hit, .chart-dot-hit').forEach(function (el) {
+				el.addEventListener('pointerenter', function (evt) { showTooltip(el); positionTooltip(evt, el); });
+				el.addEventListener('pointermove', function (evt) { positionTooltip(evt, el); });
+				el.addEventListener('pointerleave', hideTooltip);
+				el.addEventListener('focus', function () { showTooltip(el); positionTooltip(null, el); });
+				el.addEventListener('blur', hideTooltip);
+			});
+		})();
+	</script>
+</body>
+</html>

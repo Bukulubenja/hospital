@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -27,20 +28,25 @@ from .forms import (
 )
 from .models import (
     Appointment,
+    Bed,
+    Department,
     Drug,
     InvoiceItem,
     LabOrder,
     LabOrderItem,
     LabResult,
     Patient,
+    Payment,
     Prescription,
     PrescriptionItem,
     QueueTicket,
     Stock,
     StockTransaction,
+    User,
     Visit,
     VisitInvoice,
     VitalSigns,
+    Ward,
 )
 from .permissions import can_doctor_access, can_nurse_access
 from .services import (
@@ -139,7 +145,6 @@ def _make_dashboard_view(role, template_name):
     return dashboard_view
 
 
-admin_dashboard = _make_dashboard_view("ADMIN", "dashboards/admin.html")
 patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
 prescription_refill = _make_dashboard_view("PHARMACIST", "dashboards/prescription_refill.html")
 telemedicine_start = _make_dashboard_view("DOCTOR", "dashboards/telemedicine_start.html")
@@ -899,3 +904,259 @@ def adjust_stock(request, pk):
         _flash_form_errors(request, form, "Could not adjust stock — check the values entered.")
 
     return redirect("drug_stock_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------
+# Admin dashboard: hospital-wide KPIs, trends, and operational overview
+# ---------------------------------------------------------------------
+#
+# Chart geometry (bar/line coordinates, SVG path strings) is computed here
+# in Python rather than in the template: Django templates have no general
+# arithmetic, and hand-deriving pixel math in template tags is unreadable
+# and easy to get subtly wrong. The template only formats and positions
+# pre-computed numbers.
+
+CHART_WIDTH = 700
+CHART_PLOT_TOP = 16
+CHART_BASELINE = 184
+CHART_HEIGHT = 224
+CHART_BAR_WIDTH = 24
+
+
+def _rounded_top_bar_path(x, y, width, height, radius=4):
+    """SVG path for a bar: rounded top corners, square bottom (sits on the baseline)."""
+    if height <= 0:
+        return ""
+    r = min(radius, height / 2, width / 2)
+    if r <= 0:
+        return f"M {x},{y + height} L {x},{y} L {x + width},{y} L {x + width},{y + height} Z"
+    return (
+        f"M {x},{y + height} "
+        f"L {x},{y + r} "
+        f"Q {x},{y} {x + r},{y} "
+        f"L {x + width - r},{y} "
+        f"Q {x + width},{y} {x + width},{y + r} "
+        f"L {x + width},{y + height} Z"
+    )
+
+
+def _build_bar_chart(items, value_key="value", bar_width=CHART_BAR_WIDTH, max_bars=None):
+    """Turn a list of {label/date, <value_key>} dicts into bar geometry for inline SVG."""
+    if max_bars:
+        items = items[:max_bars]
+
+    plot_height = CHART_BASELINE - CHART_PLOT_TOP
+    max_value = max((item[value_key] for item in items), default=0) or 1
+    n = len(items)
+    slot_width = CHART_WIDTH / n if n else CHART_WIDTH
+
+    bars = []
+    for i, item in enumerate(items):
+        value = item[value_key]
+        height = round((value / max_value) * plot_height) if max_value else 0
+        x = round(i * slot_width + (slot_width - bar_width) / 2)
+        y = CHART_BASELINE - height
+        bars.append({
+            **item,
+            "x": x,
+            "y": y,
+            "width": bar_width,
+            "height": height,
+            "path": _rounded_top_bar_path(x, y, bar_width, height),
+            "label_x": round(x + bar_width / 2),
+        })
+    return {
+        "bars": bars,
+        "width": CHART_WIDTH,
+        "height": CHART_HEIGHT,
+        "baseline": CHART_BASELINE,
+        "max_value": max_value,
+    }
+
+
+def _build_line_chart(series):
+    """Turn a list of {date, value} dicts into line/area geometry for inline SVG."""
+    plot_height = CHART_BASELINE - CHART_PLOT_TOP
+    max_value = max((float(point["value"]) for point in series), default=0) or 1
+    n = len(series)
+    slot_width = CHART_WIDTH / (n - 1) if n > 1 else 0
+
+    points = []
+    for i, point in enumerate(series):
+        value = float(point["value"])
+        height = (value / max_value) * plot_height if max_value else 0
+        x = round(i * slot_width) if n > 1 else CHART_WIDTH / 2
+        y = round(CHART_BASELINE - height)
+        points.append({"date": point["date"], "value": point["value"], "x": x, "y": y})
+
+    path = "M " + " L ".join(f"{p['x']},{p['y']}" for p in points) if points else ""
+    area_path = ""
+    if points:
+        area_path = (
+            path
+            + f" L {points[-1]['x']},{CHART_BASELINE} L {points[0]['x']},{CHART_BASELINE} Z"
+        )
+
+    return {
+        "points": points,
+        "path": path,
+        "area_path": area_path,
+        "width": CHART_WIDTH,
+        "height": CHART_HEIGHT,
+        "baseline": CHART_BASELINE,
+        "max_value": max_value,
+    }
+
+
+def _percent_delta(current, previous):
+    """Percentage change from previous to current. None if previous is zero (undefined)."""
+    if not previous:
+        return None
+    return round(((current - previous) / previous) * 100)
+
+
+def _daily_series(queryset, date_field, aggregate, start, end):
+    """
+    One row per calendar day from start to end (inclusive), zero-filled where
+    the queryset has no rows for that day — so charts never show gaps.
+    """
+    rows = (
+        queryset.filter(**{f"{date_field}__date__gte": start, f"{date_field}__date__lte": end})
+        .annotate(day=TruncDate(date_field))
+        .values("day")
+        .annotate(value=aggregate)
+        .order_by("day")
+    )
+    by_day = {row["day"]: row["value"] for row in rows}
+
+    series = []
+    current = start
+    while current <= end:
+        series.append({"date": current, "value": by_day.get(current) or 0})
+        current += timedelta(days=1)
+    return series
+
+
+@role_required("ADMIN")
+def admin_dashboard(request):
+    today = timezone.localdate()
+    yesterday = today - timedelta(days=1)
+    window_start = today - timedelta(days=13)
+
+    # --- KPIs ---
+    total_patients = Patient.objects.count()
+
+    todays_appointments = Appointment.objects.filter(appointment_date__date=today).count()
+    yesterdays_appointments = Appointment.objects.filter(appointment_date__date=yesterday).count()
+
+    active_visits = Visit.objects.exclude(status=Visit.Status.COMPLETED).count()
+
+    todays_revenue = Payment.objects.filter(payment_date__date=today).aggregate(
+        total=Coalesce(Sum("amount_paid"), Decimal("0"))
+    )["total"]
+    yesterdays_revenue = Payment.objects.filter(payment_date__date=yesterday).aggregate(
+        total=Coalesce(Sum("amount_paid"), Decimal("0"))
+    )["total"]
+
+    total_billed = VisitInvoice.objects.aggregate(total=Coalesce(Sum("total_amount"), Decimal("0")))[
+        "total"
+    ]
+    total_collected = Payment.objects.aggregate(total=Coalesce(Sum("amount_paid"), Decimal("0")))[
+        "total"
+    ]
+    outstanding_balance = total_billed - total_collected
+
+    total_beds = Bed.objects.count()
+    occupied_beds = Bed.objects.filter(is_occupied=True).count()
+    bed_occupancy_pct = round((occupied_beds / total_beds) * 100) if total_beds else 0
+
+    low_stock_drugs = (
+        Drug.objects.annotate(total_quantity=Coalesce(Sum("stock_entries__quantity"), 0))
+        .filter(total_quantity__lte=0)
+        .count()
+    )
+
+    total_staff = User.objects.filter(is_active=True).exclude(role=User.Role.PATIENT).count()
+
+    # --- 14-day trends ---
+    appointments_series = _daily_series(
+        Appointment.objects.all(), "appointment_date", Count("id"), window_start, today
+    )
+    revenue_series = _daily_series(
+        Payment.objects.all(),
+        "payment_date",
+        Coalesce(Sum("amount_paid"), Decimal("0")),
+        window_start,
+        today,
+    )
+
+    # --- Current operational snapshot ---
+    status_labels = dict(Visit.Status.choices)
+    visits_by_status = [
+        {"label": status_labels[row["status"]], "count": row["count"]}
+        for row in Visit.objects.values("status").annotate(count=Count("id")).order_by("status")
+    ]
+
+    visits_by_department = [
+        {"label": row["department__name"] or "Unassigned", "count": row["count"]}
+        for row in (
+            Visit.objects.exclude(status=Visit.Status.COMPLETED)
+            .values("department__name")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+    ]
+
+    wards = Ward.objects.select_related("department").annotate(
+        bed_count=Count("beds", distinct=True),
+        occupied_count=Count("beds", filter=Q(beds__is_occupied=True), distinct=True),
+    ).order_by("name")
+    for ward in wards:
+        ward.occupancy_pct = round((ward.occupied_count / ward.bed_count) * 100) if ward.bed_count else 0
+
+    departments = Department.objects.annotate(
+        doctor_count=Count("doctors", distinct=True),
+        nurse_count=Count("nurses", distinct=True),
+        active_visit_count=Count(
+            "visits", filter=~Q(visits__status=Visit.Status.COMPLETED), distinct=True
+        ),
+    ).order_by("name")
+
+    staff_by_role = (
+        User.objects.filter(is_active=True)
+        .exclude(role=User.Role.PATIENT)
+        .values("role")
+        .annotate(count=Count("id"))
+        .order_by("role")
+    )
+    role_labels = dict(User.Role.choices)
+    staff_by_role = [
+        {"label": role_labels[row["role"]], "count": row["count"]} for row in staff_by_role
+    ]
+
+    context = {
+        "total_patients": total_patients,
+        "todays_appointments": todays_appointments,
+        "appointments_delta": _percent_delta(todays_appointments, yesterdays_appointments),
+        "active_visits": active_visits,
+        "todays_revenue": todays_revenue,
+        "revenue_delta": _percent_delta(todays_revenue, yesterdays_revenue),
+        "outstanding_balance": outstanding_balance,
+        "bed_occupancy_pct": bed_occupancy_pct,
+        "occupied_beds": occupied_beds,
+        "total_beds": total_beds,
+        "low_stock_drugs": low_stock_drugs,
+        "total_staff": total_staff,
+        "appointments_chart": _build_bar_chart(appointments_series, value_key="value"),
+        "revenue_chart": _build_line_chart(revenue_series),
+        "status_chart": _build_bar_chart(visits_by_status, value_key="count"),
+        "department_chart": _build_bar_chart(visits_by_department, value_key="count", max_bars=8),
+        "wards": wards,
+        "departments": departments,
+        "staff_by_role": staff_by_role,
+        "recent_patients": Patient.objects.order_by("-created_at")[:5],
+        "recent_payments": Payment.objects.select_related("invoice__patient").order_by(
+            "-payment_date"
+        )[:5],
+    }
+    return render(request, "dashboards/admin.html", context)

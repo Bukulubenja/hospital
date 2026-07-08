@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from .models import (
     Appointment,
+    Bed,
     Department,
     Drug,
     LabOrder,
@@ -25,6 +26,7 @@ from .models import (
     Visit,
     VisitInvoice,
     VitalSigns,
+    Ward,
 )
 
 
@@ -892,3 +894,155 @@ class StockManagerWorkflowTests(TestCase):
 
         batch.refresh_from_db()
         self.assertEqual(batch.quantity, 5)
+
+
+class AdminDashboardTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin1", password="pass1234", role=User.Role.ADMIN
+        )
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.department = Department.objects.create(name="General Medicine")
+        self.client.login(username="admin1", password="pass1234")
+
+    def test_non_admin_denied(self):
+        User.objects.create_user(username="nurse1", password="pass1234", role=User.Role.NURSE)
+        self.client.logout()
+        self.client.login(username="nurse1", password="pass1234")
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_kpi_counts_reflect_real_data(self):
+        patient = Patient.objects.create(
+            full_name="Dashboard Patient", gender="F", date_of_birth="1990-01-01",
+            phone="0700000006", patient_number="P-600001",
+        )
+        Appointment.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now(),
+        )
+        visit = Visit.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_DOCTOR,
+        )
+        invoice = VisitInvoice.objects.create(visit=visit, patient=patient, total_amount=100)
+        Payment.objects.create(
+            receipt_number="RCPT-TEST-1", invoice=invoice, amount_paid=40,
+            method=Payment.PaymentMethod.CASH,
+        )
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(response.context["total_patients"], 1)
+        self.assertGreaterEqual(response.context["todays_appointments"], 1)
+        self.assertGreaterEqual(response.context["active_visits"], 1)
+        self.assertEqual(response.context["todays_revenue"], 40)
+
+    def test_appointments_delta_calculation(self):
+        patient = Patient.objects.create(
+            full_name="Delta Patient", gender="M", date_of_birth="1985-01-01",
+            phone="0700000007", patient_number="P-600002",
+        )
+        yesterday = timezone.now() - timedelta(days=1)
+        Appointment.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            appointment_date=yesterday,
+        )
+        Appointment.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now(),
+        )
+        Appointment.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now(),
+        )
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertEqual(response.context["todays_appointments"], 2)
+        self.assertEqual(response.context["appointments_delta"], 100)
+
+    def test_ward_occupancy_percentage(self):
+        ward = Ward.objects.create(name="General Ward", department=self.department, capacity=4)
+        for i in range(4):
+            Bed.objects.create(ward=ward, bed_number=str(i + 1), is_occupied=(i < 2))
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        wards_by_id = {w.pk: w for w in response.context["wards"]}
+        self.assertEqual(wards_by_id[ward.pk].occupied_count, 2)
+        self.assertEqual(wards_by_id[ward.pk].bed_count, 4)
+        self.assertEqual(wards_by_id[ward.pk].occupancy_pct, 50)
+
+    def test_department_active_visit_count_excludes_completed(self):
+        patient = Patient.objects.create(
+            full_name="Dept Patient", gender="F", date_of_birth="1988-01-01",
+            phone="0700000008", patient_number="P-600003",
+        )
+        Visit.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_DOCTOR,
+        )
+        Visit.objects.create(
+            patient=patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.COMPLETED,
+        )
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        departments_by_id = {d.pk: d for d in response.context["departments"]}
+        self.assertEqual(departments_by_id[self.department.pk].active_visit_count, 1)
+
+    def test_low_stock_drug_counted(self):
+        Drug.objects.create(name="Zero Stock Drug", category="Test", strength="1mg", unit_price=1)
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertGreaterEqual(response.context["low_stock_drugs"], 1)
+
+
+class AdminStaffAccessSignalTests(TestCase):
+    def test_creating_admin_user_grants_staff_and_group_access(self):
+        user = User.objects.create_user(
+            username="new_admin", password="pass1234", role=User.Role.ADMIN
+        )
+
+        user.refresh_from_db()
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.groups.filter(name="Hospital Admins").exists())
+        self.assertTrue(user.has_perm("hospital.view_drug"))
+        self.assertTrue(user.has_perm("hospital.add_ward"))
+        self.assertTrue(user.has_perm("hospital.view_auditlog"))
+
+    def test_admin_group_never_grants_auditlog_delete(self):
+        User.objects.create_user(username="new_admin2", password="pass1234", role=User.Role.ADMIN)
+
+        user = User.objects.get(username="new_admin2")
+        self.assertFalse(user.has_perm("hospital.delete_auditlog"))
+
+    def test_promoting_existing_user_to_admin_grants_access_retroactively(self):
+        user = User.objects.create_user(
+            username="future_admin", password="pass1234", role=User.Role.RECEPTIONIST
+        )
+        self.assertFalse(user.is_staff)
+
+        user.role = User.Role.ADMIN
+        user.save()
+
+        user.refresh_from_db()
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.groups.filter(name="Hospital Admins").exists())
+
+    def test_non_admin_user_is_not_granted_staff_access(self):
+        user = User.objects.create_user(
+            username="regular_nurse", password="pass1234", role=User.Role.NURSE
+        )
+
+        user.refresh_from_db()
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.groups.filter(name="Hospital Admins").exists())
