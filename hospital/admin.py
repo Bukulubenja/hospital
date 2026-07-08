@@ -21,6 +21,7 @@ from .models import (
     Prescription,
     PrescriptionItem,
     QueueTicket,
+    RefillRequest,
     Service,
     ServiceGate,
     Stock,
@@ -79,10 +80,13 @@ class DepartmentAdmin(admin.ModelAdmin):
 
 @admin.register(Patient)
 class PatientAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "patient_number", "gender", "date_of_birth", "phone", "blood_group")
+    list_display = (
+        "full_name", "patient_number", "gender", "date_of_birth", "phone", "blood_group", "user",
+    )
     list_filter = ("gender", "blood_group")
     search_fields = ("full_name", "patient_number", "phone")
     date_hierarchy = "created_at"
+    autocomplete_fields = ("user",)
 
 
 @admin.register(Appointment)
@@ -155,6 +159,15 @@ class PrescriptionItemAdmin(admin.ModelAdmin):
     list_display = ("drug", "prescription", "dosage", "frequency", "duration")
     search_fields = ("drug__name", "prescription__patient__full_name")
     autocomplete_fields = ("drug", "prescription")
+
+
+@admin.register(RefillRequest)
+class RefillRequestAdmin(admin.ModelAdmin):
+    list_display = ("patient", "prescription_item", "status", "requested_at", "reviewed_by")
+    list_filter = ("status",)
+    search_fields = ("patient__full_name", "prescription_item__drug__name")
+    date_hierarchy = "requested_at"
+    autocomplete_fields = ("patient", "prescription_item", "reviewed_by", "new_prescription_item")
 
 
 @admin.register(Stock)

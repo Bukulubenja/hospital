@@ -1,0 +1,62 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Telemedicine History</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Telemedicine History</h1>
+				<p>Your past remote visits.</p>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'telemedicine_start' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Telemedicine
+			</a>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon primary"><i class="fas fa-history" aria-hidden="true"></i></div>
+					Past Visits
+				</h2>
+			</div>
+
+			<table class="billing-table">
+				<thead>
+					<tr>
+						<th scope="col">Doctor</th>
+						<th scope="col">Date</th>
+						<th scope="col">Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for appointment in past_appointments %}
+						<tr>
+							<td>{{ appointment.doctor.get_full_name|default:"—" }}</td>
+							<td>{{ appointment.appointment_date|date:"M j, Y g:i A" }}</td>
+							<td>
+								{% if appointment.status == "COMPLETED" %}
+									<span class="status-badge badge-success">Completed</span>
+								{% elif appointment.status == "CANCELLED" %}
+									<span class="status-badge badge-danger">Cancelled</span>
+								{% else %}
+									<span class="status-badge badge-warning">{{ appointment.get_status_display }}</span>
+								{% endif %}
+							</td>
+						</tr>
+					{% empty %}
+						<tr><td colspan="3" class="text-muted">No past telemedicine visits.</td></tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</body>
+</html>

@@ -129,6 +129,16 @@
                 </div>
             </div>
 
+            {% if not patient %}
+                <div class="card" style="border-left: 4px solid var(--warning); margin-bottom: 1.5rem;">
+                    <p style="margin: 0;">
+                        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                        Your account isn't linked to a patient record yet. Please contact reception
+                        so they can connect your login to your medical record.
+                    </p>
+                </div>
+            {% endif %}
+
             <section id="dashboard-section">
                 <!-- Patient Overview Card -->
                 <div class="card">
@@ -371,16 +381,18 @@
                             <div class="prescription-details">
                                 <i class="fas fa-pills" aria-hidden="true"></i> {{ item.frequency }}
                             </div>
-                            {% if item.days_left <= 5 %}
-                                <div class="prescription-days-left low">
-                                    <i class="fas fa-exclamation" aria-hidden="true"></i>
-                                    {{ item.days_left }} days left - REFILL SOON
-                                </div>
-                            {% else %}
-                                <div class="prescription-days-left">
-                                    <i class="fas fa-hourglass-end" aria-hidden="true"></i>
-                                    {{ item.days_left }} days left
-                                </div>
+                            {% if item.days_left is not None %}
+                                {% if item.days_left <= 5 %}
+                                    <div class="prescription-days-left low">
+                                        <i class="fas fa-exclamation" aria-hidden="true"></i>
+                                        {{ item.days_left }} days left - REFILL SOON
+                                    </div>
+                                {% else %}
+                                    <div class="prescription-days-left">
+                                        <i class="fas fa-hourglass-end" aria-hidden="true"></i>
+                                        {{ item.days_left }} days left
+                                    </div>
+                                {% endif %}
                             {% endif %}
                         </div>
                     {% empty %}
@@ -550,19 +562,10 @@
                     <div class="telemedicine-grid">
                         <div class="telemedicine-tile video">
                             <i class="fas fa-video" aria-hidden="true"></i>
-                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Start Video Consultation</div>
-                            <p class="text-muted" style="margin-bottom: 1rem;">Connect with available doctors instantly</p>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Request a Telemedicine Visit</div>
+                            <p class="text-muted" style="margin-bottom: 1rem;">Book a remote appointment and get a video call link</p>
                             <a class="btn-sm btn-primary" href="{% url 'telemedicine_start' %}">
-                                <i class="fas fa-phone" aria-hidden="true"></i> Start Call
-                            </a>
-                        </div>
-
-                        <div class="telemedicine-tile chat">
-                            <i class="fas fa-comment-dots" aria-hidden="true"></i>
-                            <div style="font-weight: 600; margin-bottom: 0.5rem;">Chat with Doctor</div>
-                            <p class="text-muted" style="margin-bottom: 1rem;">Send messages without video call</p>
-                            <a class="btn-sm btn-primary" href="{% url 'telemedicine_chat' %}">
-                                <i class="fas fa-comments" aria-hidden="true"></i> Chat Now
+                                <i class="fas fa-calendar-plus" aria-hidden="true"></i> Request Visit
                             </a>
                         </div>
 

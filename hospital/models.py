@@ -102,6 +102,19 @@ class Patient(models.Model):
     emergency_contact_name = models.CharField(max_length=200, blank=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True)
 
+    # The portal login for this patient, if one has been created. Nullable —
+    # most Patient rows (walk-ins registered by Reception) never get a login
+    # at all. Linked by an ADMIN in Django admin after creating the User,
+    # not auto-created by a signal, since the Patient row already exists.
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="patient_profile",
+        limit_choices_to={"role": "PATIENT"},
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -119,6 +132,10 @@ class Appointment(models.Model):
         CANCELLED = "CANCELLED", "Cancelled"
         NO_SHOW = "NO_SHOW", "No Show"
 
+    class ConsultationType(models.TextChoices):
+        IN_PERSON = "IN_PERSON", "In Person"
+        TELEMEDICINE = "TELEMEDICINE", "Telemedicine"
+
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="appointments")
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -134,6 +151,12 @@ class Appointment(models.Model):
     appointment_date = models.DateTimeField(db_index=True)
     reason = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.SCHEDULED)
+    consultation_type = models.CharField(
+        max_length=20, choices=ConsultationType.choices, default=ConsultationType.IN_PERSON, blank=True
+    )
+    # External video-call link for TELEMEDICINE appointments. No in-app
+    # video/chat is built — this just carries a link to a third-party tool.
+    meeting_link = models.URLField(blank=True)
 
     class Meta:
         ordering = ["-appointment_date"]
@@ -285,6 +308,49 @@ class PrescriptionItem(models.Model):
 
     def __str__(self):
         return f"{self.drug.name} for {self.prescription.patient.full_name}"
+
+
+class RefillRequest(models.Model):
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        APPROVED = "APPROVED", "Approved"
+        DENIED = "DENIED", "Denied"
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="refill_requests")
+    prescription_item = models.ForeignKey(
+        PrescriptionItem, on_delete=models.CASCADE, related_name="refill_requests"
+    )
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="refill_requests_reviewed",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    denial_reason = models.CharField(max_length=300, blank=True)
+
+    # The freshly-created PrescriptionItem (on its own new Visit) that
+    # fulfills this request once approved — set by approve_refill_request()
+    # in services.py so the approval can be traced back to what it produced.
+    new_prescription_item = models.OneToOneField(
+        PrescriptionItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="refill_source_request",
+    )
+
+    class Meta:
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return f"Refill request for {self.prescription_item.drug.name} - {self.get_status_display()}"
 
 
 class Stock(models.Model):

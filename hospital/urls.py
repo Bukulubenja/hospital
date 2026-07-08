@@ -19,6 +19,7 @@ urlpatterns = [
     path("appointments/", views.appointment_list, name="appointment_list"),
     path("appointments/new/", views.appointment_create, name="appointment_create"),
     path("appointments/<int:pk>/checkin/", views.appointment_checkin, name="appointment_checkin"),
+    path("appointments/<int:pk>/meeting-link/", views.set_meeting_link, name="set_meeting_link"),
     path("visits/<int:pk>/", views.visit_detail, name="visit_detail"),
     path("visits/<int:pk>/start/", views.visit_start, name="visit_start"),
     path("visits/<int:pk>/vitals/", views.visit_record_vitals, name="visit_record_vitals"),
@@ -50,13 +51,17 @@ urlpatterns = [
     path("stock/drugs/<int:pk>/", views.drug_stock_detail, name="drug_stock_detail"),
     path("stock/drugs/<int:pk>/receive/", views.receive_stock, name="receive_stock"),
     path("stock/drugs/<int:pk>/adjust/", views.adjust_stock, name="adjust_stock"),
-    path("prescription_refill/", views.prescription_refill, name="prescription_refill"),
-    path("telemedicine_start/", views.telemedicine_start, name="telemedicine_start"),
-    path("records_download/", views.records_download, name="records_download"),
+    path("doctor/refill-requests/<int:pk>/approve/", views.refill_request_approve, name="refill_request_approve"),
+    path("doctor/refill-requests/<int:pk>/deny/", views.refill_request_deny, name="refill_request_deny"),
+    path("patient/prescription-refill/", views.prescription_refill, name="prescription_refill"),
+    path(
+        "patient/prescription-refill/<int:item_pk>/request/",
+        views.request_refill,
+        name="request_refill",
+    ),
+    path("patient/telemedicine/", views.telemedicine_start, name="telemedicine_start"),
+    path("patient/telemedicine/history/", views.telemedicine_history, name="telemedicine_history"),
+    path("patient/records/", views.records_download, name="records_download"),
     path("lab_result_list/", views.lab_result_list, name="lab_result_list"),
     path("invoice_list/", views.invoice_list, name="invoice_list"),
-    path("telemedicine_chat/", views.telemedicine_chat, name="telemedicine_chat"),
-    path("telemedicine_history/", views.telemedicine_history, name="telemedicine_history")
-
-
 ]

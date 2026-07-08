@@ -1,9 +1,45 @@
 # services.py
 
+import re
+
 from django.db import transaction
 from django.utils import timezone
 
-from .models import LabResult, ServiceGate, Stock, StockTransaction, Visit, VisitInvoice
+from .models import (
+    LabResult,
+    Prescription,
+    PrescriptionItem,
+    ServiceGate,
+    Stock,
+    StockTransaction,
+    Visit,
+    VisitInvoice,
+)
+
+_DURATION_RE = re.compile(r"(\d+)\s*(day|week|month)", re.IGNORECASE)
+_DURATION_UNIT_DAYS = {"day": 1, "week": 7, "month": 30}
+
+
+def patient_for_user(user):
+    """Return the Patient record linked to this login, or None if unlinked."""
+    return getattr(user, "patient_profile", None)
+
+
+def days_left_for_prescription_item(item):
+    """
+    Estimate remaining days of supply from the free-text `duration` field
+    (e.g. "7 days", "2 weeks") and when the item was dispensed. Returns
+    None if it hasn't been dispensed yet or `duration` doesn't parse —
+    there's no structured duration field to compute this exactly.
+    """
+    if not item.dispensed or not item.dispensed_at:
+        return None
+    match = _DURATION_RE.search(item.duration)
+    if not match:
+        return None
+    total_days = int(match.group(1)) * _DURATION_UNIT_DAYS[match.group(2).lower()]
+    elapsed = (timezone.now().date() - item.dispensed_at.date()).days
+    return max(total_days - elapsed, 0)
 
 
 def is_gate_cleared(visit, service_type: str) -> bool:
@@ -114,3 +150,53 @@ def refresh_invoice_totals(invoice):
         invoice.status = VisitInvoice.Status.PARTIAL
 
     invoice.save(update_fields=["total_amount", "status"])
+
+
+def approve_refill_request(refill_request, doctor):
+    """
+    Approve a prescription refill: clone the source item onto a fresh Visit
+    that starts life already WAITING_PHARMACY, so it flows through the
+    existing pharmacy dispensing machinery unchanged — no new visit ever
+    goes through a doctor consultation, since the doctor's approval here
+    *is* the consultation for a refill.
+    """
+    source_item = refill_request.prescription_item
+    with transaction.atomic():
+        visit = Visit.objects.create(
+            patient=refill_request.patient,
+            doctor=doctor,
+            department=source_item.prescription.visit.department,
+            visit_type=Visit.VisitType.OPD,
+            status=Visit.Status.WAITING_PHARMACY,
+            symptoms="Prescription refill",
+        )
+        prescription = Prescription.objects.create(
+            visit=visit, doctor=doctor, patient=refill_request.patient
+        )
+        new_item = PrescriptionItem.objects.create(
+            prescription=prescription,
+            drug=source_item.drug,
+            quantity=source_item.quantity,
+            dosage=source_item.dosage,
+            frequency=source_item.frequency,
+            duration=source_item.duration,
+            instructions=source_item.instructions,
+        )
+
+        refill_request.status = refill_request.Status.APPROVED
+        refill_request.reviewed_by = doctor
+        refill_request.reviewed_at = timezone.now()
+        refill_request.new_prescription_item = new_item
+        refill_request.save(
+            update_fields=["status", "reviewed_by", "reviewed_at", "new_prescription_item"]
+        )
+
+    return visit
+
+
+def deny_refill_request(refill_request, doctor, reason):
+    refill_request.status = refill_request.Status.DENIED
+    refill_request.reviewed_by = doctor
+    refill_request.reviewed_at = timezone.now()
+    refill_request.denial_reason = reason
+    refill_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "denial_reason"])

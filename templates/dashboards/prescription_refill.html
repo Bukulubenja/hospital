@@ -1,0 +1,104 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Prescription Refills</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Prescription Refills</h1>
+				<p>Request a refill of a medication you've already received.</p>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'patient_dashboard' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Dashboard
+			</a>
+		</div>
+
+		{% if messages %}
+			<div style="margin-bottom: 1.5rem;">
+				{% for message in messages %}
+					<div class="card" style="border-left: 4px solid {% if message.tags == 'error' %}var(--danger){% else %}var(--success){% endif %}; margin-bottom: 0.75rem;">
+						{{ message }}
+					</div>
+				{% endfor %}
+			</div>
+		{% endif %}
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon success"><i class="fas fa-prescription" aria-hidden="true"></i></div>
+					Eligible for Refill
+				</h2>
+			</div>
+
+			{% for item in eligible_items %}
+				<div class="prescription-item">
+					<div class="prescription-name">{{ item.drug.name }} {{ item.drug.strength }}</div>
+					<div class="prescription-details">
+						<i class="fas fa-pills" aria-hidden="true"></i> {{ item.dosage }} — {{ item.frequency }} — {{ item.duration }}
+					</div>
+					{% if item.has_pending_request %}
+						<span class="status-badge badge-warning" style="margin-top: 0.5rem;">Refill request pending</span>
+					{% else %}
+						<form method="post" action="{% url 'request_refill' item.pk %}" style="margin-top: 0.75rem;">
+							{% csrf_token %}
+							<button type="submit" class="btn-sm btn-primary">
+								<i class="fas fa-sync" aria-hidden="true"></i> Request Refill
+							</button>
+						</form>
+					{% endif %}
+				</div>
+			{% empty %}
+				<p class="text-muted">No previously dispensed prescriptions are eligible for refill yet.</p>
+			{% endfor %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon primary"><i class="fas fa-list" aria-hidden="true"></i></div>
+					Your Refill Requests
+				</h2>
+			</div>
+
+			<table class="billing-table">
+				<thead>
+					<tr>
+						<th scope="col">Drug</th>
+						<th scope="col">Requested</th>
+						<th scope="col">Status</th>
+						<th scope="col">Notes</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for req in refill_requests %}
+						<tr>
+							<td>{{ req.prescription_item.drug.name }}</td>
+							<td>{{ req.requested_at|date:"M j, Y" }}</td>
+							<td>
+								{% if req.status == "APPROVED" %}
+									<span class="status-badge badge-success">Approved</span>
+								{% elif req.status == "DENIED" %}
+									<span class="status-badge badge-danger">Denied</span>
+								{% else %}
+									<span class="status-badge badge-warning">Pending</span>
+								{% endif %}
+							</td>
+							<td class="text-muted">{{ req.denial_reason|default:"—" }}</td>
+						</tr>
+					{% empty %}
+						<tr><td colspan="4" class="text-muted">No refill requests yet.</td></tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</body>
+</html>

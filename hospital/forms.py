@@ -43,7 +43,15 @@ class PatientForm(forms.ModelForm):
 class AppointmentForm(forms.ModelForm):
     class Meta:
         model = Appointment
-        fields = ["patient", "doctor", "department", "appointment_date", "reason"]
+        fields = [
+            "patient",
+            "doctor",
+            "department",
+            "appointment_date",
+            "reason",
+            "consultation_type",
+            "meeting_link",
+        ]
         widgets = {
             "appointment_date": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "reason": forms.Textarea(attrs={"rows": 2}),
@@ -58,6 +66,34 @@ class AppointmentForm(forms.ModelForm):
         if appointment_date < timezone.now():
             raise forms.ValidationError("Appointment date/time cannot be in the past.")
         return appointment_date
+
+
+class PatientTelemedicineForm(forms.ModelForm):
+    """A patient requesting their own telemedicine slot — no `patient` field
+    (the view fixes it to the caller's own Patient record) and `doctor` is
+    optional, since a patient may not know which doctor to ask for."""
+
+    class Meta:
+        model = Appointment
+        fields = ["doctor", "department", "appointment_date", "reason"]
+        widgets = {
+            "appointment_date": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            "reason": forms.Textarea(attrs={"rows": 2, "placeholder": "What would you like to discuss?"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["doctor"].required = False
+
+    def clean_appointment_date(self):
+        appointment_date = self.cleaned_data["appointment_date"]
+        if appointment_date < timezone.now():
+            raise forms.ValidationError("Appointment date/time cannot be in the past.")
+        return appointment_date
+
+
+class MeetingLinkForm(forms.Form):
+    meeting_link = forms.URLField(label="Meeting link")
 
 
 class VitalSignsForm(forms.ModelForm):

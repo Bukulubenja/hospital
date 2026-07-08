@@ -32,6 +32,16 @@
 				<div><strong>Status</strong><span class="badge badge-{{ visit.status|lower }}">{{ visit.get_status_display }}</span></div>
 			</div>
 			{% if visit.symptoms %}<p><strong>Reason for visit:</strong> {{ visit.symptoms }}</p>{% endif %}
+			{% if visit.appointment.consultation_type == "TELEMEDICINE" %}
+				<p>
+					<strong>Telemedicine visit —</strong>
+					{% if visit.appointment.meeting_link %}
+						<a href="{{ visit.appointment.meeting_link }}" target="_blank" rel="noopener noreferrer">Join video call</a>
+					{% else %}
+						no meeting link set yet.
+					{% endif %}
+				</p>
+			{% endif %}
 
 			<div class="section-actions">
 				{% if visit.status == "WAITING_DOCTOR" %}

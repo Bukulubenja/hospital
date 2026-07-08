@@ -19,7 +19,9 @@ from .forms import (
     LabOrderItemForm,
     LabResultForm,
     MedicalRecordForm,
+    MeetingLinkForm,
     PatientForm,
+    PatientTelemedicineForm,
     PaymentForm,
     PrescriptionItemForm,
     ReceiveStockForm,
@@ -35,11 +37,13 @@ from .models import (
     LabOrder,
     LabOrderItem,
     LabResult,
+    MedicalRecord,
     Patient,
     Payment,
     Prescription,
     PrescriptionItem,
     QueueTicket,
+    RefillRequest,
     Stock,
     StockTransaction,
     User,
@@ -50,8 +54,12 @@ from .models import (
 )
 from .permissions import can_doctor_access, can_nurse_access
 from .services import (
+    approve_refill_request,
+    days_left_for_prescription_item,
+    deny_refill_request,
     dispense_prescription_item,
     lab_order_fully_resulted,
+    patient_for_user,
     refresh_invoice_totals,
     visit_status_after_consultation,
     visit_status_after_lab,
@@ -126,33 +134,6 @@ def logout_view(request):
     logout(request)
     messages.info(request, "You have been logged out.")
     return redirect(DEFAULT_REDIRECT)
-
-
-# ---------------------------------------------------------------------
-# Role dashboards
-# ---------------------------------------------------------------------
-# All dashboards follow the same pattern (require login + a specific
-# role, then render that role's template), so they're generated from
-# one factory instead of eight near-identical function bodies.
-
-def _make_dashboard_view(role, template_name):
-    @login_required
-    @role_required(role)
-    def dashboard_view(request):
-        return render(request, template_name)
-
-    dashboard_view.__name__ = f"{role.lower()}_dashboard"
-    return dashboard_view
-
-
-patient_dashboard = _make_dashboard_view("PATIENT", "dashboards/patient_dashboard.html")
-prescription_refill = _make_dashboard_view("PHARMACIST", "dashboards/prescription_refill.html")
-telemedicine_start = _make_dashboard_view("DOCTOR", "dashboards/telemedicine_start.html")
-telemedicine_chat = _make_dashboard_view("DOCTOR", "dashboards/telemedicine_chat.html")
-telemedicine_history = _make_dashboard_view("DOCTOR", "dashboards/telemedicine_history.html")
-records_download = _make_dashboard_view("ADMIN", "dashboards/records_download.html")
-lab_result_list = _make_dashboard_view("LAB", "dashboards/lab_result_list.html")
-invoice_list = _make_dashboard_view("CASHIER", "dashboards/invoice_list.html")
 
 
 # ---------------------------------------------------------------------
@@ -321,6 +302,27 @@ def appointment_checkin(request, pk):
     return redirect("reception_dashboard")
 
 
+@role_required("RECEPTIONIST")
+def set_meeting_link(request, pk):
+    if request.method != "POST":
+        return redirect("appointment_list")
+
+    appointment = get_object_or_404(Appointment, pk=pk)
+    if appointment.consultation_type != Appointment.ConsultationType.TELEMEDICINE:
+        messages.error(request, "Only telemedicine appointments have a meeting link.")
+        return redirect("appointment_list")
+
+    form = MeetingLinkForm(request.POST)
+    if form.is_valid():
+        appointment.meeting_link = form.cleaned_data["meeting_link"]
+        appointment.save(update_fields=["meeting_link"])
+        messages.success(request, f"Meeting link set for {appointment.patient.full_name}.")
+    else:
+        _flash_form_errors(request, form, "Could not save the meeting link.")
+
+    return redirect("appointment_list")
+
+
 # ---------------------------------------------------------------------
 # Doctor workflow: consult -> vitals -> diagnosis -> prescribe / order labs
 # ---------------------------------------------------------------------
@@ -341,9 +343,15 @@ def doctor_dashboard(request):
         .filter(doctor=request.user, status=Visit.Status.IN_CONSULTATION)
         .order_by("visit_date")
     )
+    pending_refill_requests = (
+        RefillRequest.objects.select_related("patient", "prescription_item__drug")
+        .filter(status=RefillRequest.Status.PENDING, prescription_item__prescription__doctor=request.user)
+        .order_by("requested_at")
+    )
     context = {
         "waiting_visits": waiting_visits,
         "in_progress_visits": in_progress_visits,
+        "pending_refill_requests": pending_refill_requests,
     }
     return render(request, "dashboards/doctor_dashboard.html", context)
 
@@ -488,6 +496,52 @@ def visit_complete(request, pk):
     messages.success(
         request, f"Visit for {visit.patient.full_name} marked {visit.get_status_display()}."
     )
+    return redirect("doctor_dashboard")
+
+
+def _owns_refill_request(user, refill_request):
+    return refill_request.prescription_item.prescription.doctor_id == user.id
+
+
+@role_required("DOCTOR")
+def refill_request_approve(request, pk):
+    if request.method != "POST":
+        return redirect("doctor_dashboard")
+
+    refill_request = get_object_or_404(RefillRequest, pk=pk)
+    if not _owns_refill_request(request.user, refill_request):
+        raise PermissionDenied("You do not have access to this refill request.")
+    if refill_request.status != RefillRequest.Status.PENDING:
+        messages.error(request, "This refill request has already been reviewed.")
+        return redirect("doctor_dashboard")
+
+    approve_refill_request(refill_request, request.user)
+    messages.success(
+        request,
+        f"Refill approved for {refill_request.patient.full_name} — sent to pharmacy.",
+    )
+    return redirect("doctor_dashboard")
+
+
+@role_required("DOCTOR")
+def refill_request_deny(request, pk):
+    if request.method != "POST":
+        return redirect("doctor_dashboard")
+
+    refill_request = get_object_or_404(RefillRequest, pk=pk)
+    if not _owns_refill_request(request.user, refill_request):
+        raise PermissionDenied("You do not have access to this refill request.")
+    if refill_request.status != RefillRequest.Status.PENDING:
+        messages.error(request, "This refill request has already been reviewed.")
+        return redirect("doctor_dashboard")
+
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        messages.error(request, "A reason is required to deny a refill request.")
+        return redirect("doctor_dashboard")
+
+    deny_refill_request(refill_request, request.user, reason)
+    messages.success(request, f"Refill request for {refill_request.patient.full_name} denied.")
     return redirect("doctor_dashboard")
 
 
@@ -904,6 +958,232 @@ def adjust_stock(request, pk):
         _flash_form_errors(request, form, "Could not adjust stock — check the values entered.")
 
     return redirect("drug_stock_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------
+# Patient workflow: dashboard, telemedicine requests, prescription
+# refills, records download. Every view here resolves the caller's own
+# Patient record via patient_for_user() and scopes all queries to it —
+# there's no shared queue to gate like doctor/nurse, so a plain query
+# filter is the only access control needed.
+# ---------------------------------------------------------------------
+
+@role_required("PATIENT")
+def patient_dashboard(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        return render(request, "dashboards/patient_dashboard.html", {"patient": None})
+
+    now = timezone.now()
+    last_visit = patient.visits.order_by("-visit_date").first()
+    invoices = list(VisitInvoice.objects.filter(patient=patient))
+    total_paid = sum((invoice.amount_paid for invoice in invoices), Decimal("0"))
+    total_due = sum((invoice.balance_due for invoice in invoices), Decimal("0"))
+
+    active_prescription_items = list(
+        PrescriptionItem.objects.filter(prescription__patient=patient, dispensed=True)
+        .select_related("drug", "prescription")
+        .order_by("-prescription__created_at")[:10]
+    )
+    for item in active_prescription_items:
+        item.days_left = days_left_for_prescription_item(item)
+
+    context = {
+        "patient": patient,
+        "last_visit": last_visit,
+        "latest_visit_summary": last_visit.diagnosis_summary if last_visit else "",
+        "upcoming_appointments": (
+            patient.appointments.select_related("doctor", "department")
+            .filter(appointment_date__gte=now, status=Appointment.Status.SCHEDULED)
+            .order_by("appointment_date")
+        ),
+        "latest_vitals": VitalSigns.objects.filter(visit__patient=patient)
+        .order_by("-recorded_at")
+        .first(),
+        "recent_lab_results": LabResult.objects.filter(lab_order__patient=patient)
+        .select_related("test", "lab_order")
+        .order_by("-result_date")[:5],
+        "departments": Department.objects.all(),
+        "medical_history": MedicalRecord.objects.filter(patient=patient)
+        .select_related("doctor", "visit")
+        .order_by("-created_at")[:10],
+        "active_prescription_items": active_prescription_items,
+        "recent_refill_requests": patient.refill_requests.select_related(
+            "prescription_item__drug"
+        )[:5],
+        "total_paid": total_paid,
+        # No separate "overdue" concept in the data model yet — pending and
+        # due both currently mean "outstanding balance across all invoices".
+        "total_pending": total_due,
+        "total_due": total_due,
+        "recent_invoices": VisitInvoice.objects.filter(patient=patient).order_by("-created_at")[:5],
+    }
+    return render(request, "dashboards/patient_dashboard.html", context)
+
+
+@role_required("PATIENT")
+def prescription_refill(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    eligible_items = (
+        PrescriptionItem.objects.filter(prescription__patient=patient, dispensed=True)
+        .select_related("drug", "prescription")
+        .annotate(
+            has_pending_request=Exists(
+                RefillRequest.objects.filter(
+                    prescription_item=OuterRef("pk"), status=RefillRequest.Status.PENDING
+                )
+            )
+        )
+        .order_by("-prescription__created_at")
+    )
+    refill_requests = patient.refill_requests.select_related(
+        "prescription_item__drug", "reviewed_by"
+    )
+
+    context = {
+        "patient": patient,
+        "eligible_items": eligible_items,
+        "refill_requests": refill_requests,
+    }
+    return render(request, "dashboards/prescription_refill.html", context)
+
+
+@role_required("PATIENT")
+def request_refill(request, item_pk):
+    if request.method != "POST":
+        return redirect("prescription_refill")
+
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    item = get_object_or_404(
+        PrescriptionItem, pk=item_pk, prescription__patient=patient, dispensed=True
+    )
+    if RefillRequest.objects.filter(
+        prescription_item=item, status=RefillRequest.Status.PENDING
+    ).exists():
+        messages.error(request, f"You already have a pending refill request for {item.drug.name}.")
+        return redirect("prescription_refill")
+
+    RefillRequest.objects.create(patient=patient, prescription_item=item)
+    messages.success(request, f"Refill requested for {item.drug.name} — awaiting doctor approval.")
+    return redirect("prescription_refill")
+
+
+@role_required("PATIENT")
+def telemedicine_start(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    if request.method == "POST":
+        form = PatientTelemedicineForm(request.POST)
+        if form.is_valid():
+            appointment = form.save(commit=False)
+            appointment.patient = patient
+            appointment.consultation_type = Appointment.ConsultationType.TELEMEDICINE
+            appointment.save()
+            messages.success(
+                request,
+                f"Telemedicine visit requested for {appointment.appointment_date:%Y-%m-%d %H:%M}. "
+                "Reception will add your video call link before the appointment.",
+            )
+            return redirect("telemedicine_start")
+        _flash_form_errors(request, form, "Could not request the appointment.")
+    else:
+        form = PatientTelemedicineForm()
+
+    upcoming = (
+        patient.appointments.select_related("doctor", "department")
+        .filter(
+            consultation_type=Appointment.ConsultationType.TELEMEDICINE,
+            status=Appointment.Status.SCHEDULED,
+        )
+        .order_by("appointment_date")
+    )
+    context = {"patient": patient, "form": form, "upcoming_appointments": upcoming}
+    return render(request, "dashboards/telemedicine_start.html", context)
+
+
+@role_required("PATIENT")
+def telemedicine_history(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    past_appointments = (
+        patient.appointments.select_related("doctor", "department")
+        .filter(consultation_type=Appointment.ConsultationType.TELEMEDICINE)
+        .exclude(status=Appointment.Status.SCHEDULED)
+        .order_by("-appointment_date")
+    )
+    return render(
+        request,
+        "dashboards/telemedicine_history.html",
+        {"patient": patient, "past_appointments": past_appointments},
+    )
+
+
+@role_required("PATIENT")
+def records_download(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    context = {
+        "patient": patient,
+        "visits": patient.visits.select_related("doctor", "department").order_by("-visit_date"),
+        "medical_records": MedicalRecord.objects.filter(patient=patient)
+        .select_related("doctor", "visit")
+        .order_by("-created_at"),
+        "prescriptions": Prescription.objects.filter(patient=patient)
+        .prefetch_related("items__drug")
+        .order_by("-created_at"),
+        "lab_orders": LabOrder.objects.filter(patient=patient)
+        .prefetch_related("items__test", "results__test")
+        .order_by("-created_at"),
+        "generated_at": timezone.now(),
+    }
+    return render(request, "dashboards/records_download.html", context)
+
+
+@role_required("PATIENT")
+def lab_result_list(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    results = (
+        LabResult.objects.filter(lab_order__patient=patient)
+        .select_related("test", "lab_order")
+        .order_by("-result_date")
+    )
+    return render(request, "dashboards/lab_result_list.html", {"patient": patient, "results": results})
+
+
+@role_required("PATIENT")
+def invoice_list(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    invoices = (
+        VisitInvoice.objects.filter(patient=patient)
+        .prefetch_related("items__service", "payments")
+        .order_by("-created_at")
+    )
+    return render(request, "dashboards/invoice_list.html", {"patient": patient, "invoices": invoices})
 
 
 # ---------------------------------------------------------------------

@@ -1,0 +1,41 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Lab Results</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Lab Results</h1>
+				<p>All results on file for you.</p>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'patient_dashboard' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Dashboard
+			</a>
+		</div>
+
+		<div class="card">
+			<div class="tile-grid">
+				{% for result in results %}
+					<div class="tile {% if result.remarks %}tile-warning{% else %}tile-success{% endif %}">
+						<div class="tile-title">{{ result.test.name }}</div>
+						<div class="tile-subtitle">{{ result.result_date|date:"M j, Y" }}</div>
+						<div class="tile-subtitle">{{ result.result_value }} {% if result.normal_range %}(normal: {{ result.normal_range }}){% endif %}</div>
+						{% if result.remarks %}
+							<p class="text-muted" style="margin-top: 0.5rem;">{{ result.remarks }}</p>
+						{% endif %}
+					</div>
+				{% empty %}
+					<p class="text-muted">No lab results on file.</p>
+				{% endfor %}
+			</div>
+		</div>
+	</div>
+</body>
+</html>

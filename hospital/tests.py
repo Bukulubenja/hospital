@@ -19,6 +19,7 @@ from .models import (
     Prescription,
     PrescriptionItem,
     QueueTicket,
+    RefillRequest,
     Service,
     Stock,
     StockTransaction,
@@ -1046,3 +1047,209 @@ class AdminStaffAccessSignalTests(TestCase):
         user.refresh_from_db()
         self.assertFalse(user.is_staff)
         self.assertFalse(user.groups.filter(name="Hospital Admins").exists())
+
+
+class PatientWorkflowTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="General Medicine")
+        self.doctor = User.objects.create_user(
+            username="doc1", password="pass1234", role=User.Role.DOCTOR
+        )
+        self.other_doctor = User.objects.create_user(
+            username="doc2", password="pass1234", role=User.Role.DOCTOR
+        )
+
+        self.patient_user = User.objects.create_user(
+            username="patient1", password="pass1234", role=User.Role.PATIENT
+        )
+        self.patient = Patient.objects.create(
+            full_name="Portal Patient", gender="F", date_of_birth="1990-01-01",
+            phone="0700000010", patient_number="P-300001", user=self.patient_user,
+        )
+
+        self.other_patient = Patient.objects.create(
+            full_name="Other Patient", gender="M", date_of_birth="1985-01-01",
+            phone="0700000011", patient_number="P-300002",
+        )
+
+        self.drug = Drug.objects.create(
+            name="Amlodipine", category="Cardiovascular", strength="5mg", unit_price=5
+        )
+
+        self.visit = Visit.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.COMPLETED,
+        )
+        self.prescription = Prescription.objects.create(
+            visit=self.visit, doctor=self.doctor, patient=self.patient
+        )
+        self.dispensed_item = PrescriptionItem.objects.create(
+            prescription=self.prescription, drug=self.drug, quantity=30,
+            dosage="1 tablet", frequency="once daily", duration="30 days",
+            dispensed=True, dispensed_at=timezone.now(), dispensed_by=self.doctor,
+        )
+
+        self.client.login(username="patient1", password="pass1234")
+
+    def test_non_patient_denied_dashboard(self):
+        self.client.logout()
+        self.client.login(username="doc1", password="pass1234")
+
+        response = self.client.get(reverse("patient_dashboard"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_unlinked_patient_sees_friendly_message_not_crash(self):
+        User.objects.create_user(username="orphan", password="pass1234", role=User.Role.PATIENT)
+        self.client.logout()
+        self.client.login(username="orphan", password="pass1234")
+
+        response = self.client.get(reverse("patient_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["patient"])
+
+    def test_telemedicine_request_creates_appointment_for_own_patient(self):
+        appointment_date = (timezone.now() + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
+
+        response = self.client.post(reverse("telemedicine_start"), {
+            "doctor": self.doctor.pk,
+            "department": self.department.pk,
+            "appointment_date": appointment_date,
+            "reason": "Follow-up",
+        })
+
+        self.assertRedirects(response, reverse("telemedicine_start"))
+        appointment = Appointment.objects.get(patient=self.patient)
+        self.assertEqual(appointment.consultation_type, Appointment.ConsultationType.TELEMEDICINE)
+        self.assertEqual(appointment.meeting_link, "")
+
+    def test_telemedicine_history_only_shows_own_appointments(self):
+        mine = Appointment.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now() - timedelta(days=1),
+            status=Appointment.Status.COMPLETED,
+            consultation_type=Appointment.ConsultationType.TELEMEDICINE,
+        )
+        Appointment.objects.create(
+            patient=self.other_patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now() - timedelta(days=1),
+            status=Appointment.Status.COMPLETED,
+            consultation_type=Appointment.ConsultationType.TELEMEDICINE,
+        )
+
+        response = self.client.get(reverse("telemedicine_history"))
+
+        past = list(response.context["past_appointments"])
+        self.assertEqual(past, [mine])
+
+    def test_request_refill_creates_pending_request(self):
+        response = self.client.post(reverse("request_refill", args=[self.dispensed_item.pk]))
+
+        self.assertRedirects(response, reverse("prescription_refill"))
+        refill_request = RefillRequest.objects.get(prescription_item=self.dispensed_item)
+        self.assertEqual(refill_request.status, RefillRequest.Status.PENDING)
+        self.assertEqual(refill_request.patient, self.patient)
+
+    def test_request_refill_for_other_patients_item_404s(self):
+        other_prescription = Prescription.objects.create(
+            visit=Visit.objects.create(
+                patient=self.other_patient, doctor=self.doctor, department=self.department,
+                visit_type=Visit.VisitType.OPD, status=Visit.Status.COMPLETED,
+            ),
+            doctor=self.doctor, patient=self.other_patient,
+        )
+        other_item = PrescriptionItem.objects.create(
+            prescription=other_prescription, drug=self.drug, quantity=10,
+            dosage="1 tablet", frequency="once daily", duration="10 days",
+            dispensed=True, dispensed_at=timezone.now(), dispensed_by=self.doctor,
+        )
+
+        response = self.client.post(reverse("request_refill", args=[other_item.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(RefillRequest.objects.filter(prescription_item=other_item).exists())
+
+    def test_duplicate_pending_refill_request_rejected(self):
+        self.client.post(reverse("request_refill", args=[self.dispensed_item.pk]))
+
+        self.client.post(reverse("request_refill", args=[self.dispensed_item.pk]))
+
+        self.assertEqual(
+            RefillRequest.objects.filter(prescription_item=self.dispensed_item).count(), 1
+        )
+
+    def test_doctor_refill_queue_only_shows_own_prescriptions(self):
+        RefillRequest.objects.create(patient=self.patient, prescription_item=self.dispensed_item)
+
+        self.client.logout()
+        self.client.login(username="doc2", password="pass1234")
+        response = self.client.get(reverse("doctor_dashboard"))
+
+        self.assertEqual(len(response.context["pending_refill_requests"]), 0)
+
+    def test_refill_request_approve_creates_waiting_pharmacy_visit_reaching_pharmacy_dashboard(self):
+        refill_request = RefillRequest.objects.create(
+            patient=self.patient, prescription_item=self.dispensed_item
+        )
+        self.client.logout()
+        self.client.login(username="doc1", password="pass1234")
+
+        response = self.client.post(reverse("refill_request_approve", args=[refill_request.pk]))
+
+        self.assertRedirects(response, reverse("doctor_dashboard"))
+        refill_request.refresh_from_db()
+        self.assertEqual(refill_request.status, RefillRequest.Status.APPROVED)
+        new_item = refill_request.new_prescription_item
+        self.assertIsNotNone(new_item)
+        new_visit = new_item.prescription.visit
+        self.assertEqual(new_visit.status, Visit.Status.WAITING_PHARMACY)
+
+        pharmacist = User.objects.create_user(
+            username="pharm1", password="pass1234", role=User.Role.PHARMACIST
+        )
+        self.client.logout()
+        self.client.login(username="pharm1", password="pass1234")
+        pharmacy_response = self.client.get(reverse("pharmacy_dashboard"))
+        self.assertIn(new_visit, list(pharmacy_response.context["visits"]))
+
+    def test_refill_request_deny_requires_reason(self):
+        refill_request = RefillRequest.objects.create(
+            patient=self.patient, prescription_item=self.dispensed_item
+        )
+        self.client.logout()
+        self.client.login(username="doc1", password="pass1234")
+
+        response = self.client.post(reverse("refill_request_deny", args=[refill_request.pk]), {})
+
+        self.assertRedirects(response, reverse("doctor_dashboard"))
+        refill_request.refresh_from_db()
+        self.assertEqual(refill_request.status, RefillRequest.Status.PENDING)
+
+        response = self.client.post(
+            reverse("refill_request_deny", args=[refill_request.pk]), {"reason": "Needs a checkup first"}
+        )
+        refill_request.refresh_from_db()
+        self.assertEqual(refill_request.status, RefillRequest.Status.DENIED)
+        self.assertEqual(refill_request.denial_reason, "Needs a checkup first")
+
+    def test_doctor_who_did_not_prescribe_denied_on_approve(self):
+        refill_request = RefillRequest.objects.create(
+            patient=self.patient, prescription_item=self.dispensed_item
+        )
+        self.client.logout()
+        self.client.login(username="doc2", password="pass1234")
+
+        response = self.client.post(reverse("refill_request_approve", args=[refill_request.pk]))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_records_download_renders_own_data_only(self):
+        MedicalRecord.objects.create(
+            visit=self.visit, patient=self.patient, doctor=self.doctor, diagnosis="Hypertension"
+        )
+
+        response = self.client.get(reverse("records_download"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["visits"]), [self.visit])

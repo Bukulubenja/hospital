@@ -1,0 +1,99 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Telemedicine</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Telemedicine</h1>
+				<p>Request a remote visit — your doctor will send a video call link before it starts.</p>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'patient_dashboard' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Dashboard
+			</a>
+		</div>
+
+		{% if messages %}
+			<div style="margin-bottom: 1.5rem;">
+				{% for message in messages %}
+					<div class="card" style="border-left: 4px solid {% if message.tags == 'error' %}var(--danger){% else %}var(--success){% endif %}; margin-bottom: 0.75rem;">
+						{{ message }}
+					</div>
+				{% endfor %}
+			</div>
+		{% endif %}
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon success"><i class="fas fa-video" aria-hidden="true"></i></div>
+					Request a Telemedicine Visit
+				</h2>
+			</div>
+
+			<form method="post" novalidate>
+				{% csrf_token %}
+				{% for field in form %}
+					<div class="form-group">
+						<label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+						{{ field }}
+						{% if field.errors %}
+							<ul class="errorlist">
+								{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+							</ul>
+						{% endif %}
+					</div>
+				{% endfor %}
+				<button type="submit" class="btn-sm btn-primary">
+					<i class="fas fa-calendar-plus" aria-hidden="true"></i> Request Visit
+				</button>
+			</form>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon primary"><i class="fas fa-calendar-check" aria-hidden="true"></i></div>
+					Upcoming Telemedicine Visits
+				</h2>
+			</div>
+
+			{% for appointment in upcoming_appointments %}
+				<div class="appointment-item">
+					<div class="appointment-info">
+						<div class="appointment-doctor">
+							{{ appointment.doctor.get_full_name|default:"Doctor to be assigned" }}
+						</div>
+						<div class="appointment-time">
+							<i class="fas fa-clock" aria-hidden="true"></i>
+							{{ appointment.appointment_date|date:"D, N j, g:i A" }}
+						</div>
+					</div>
+					<div class="appointment-actions">
+						{% if appointment.meeting_link %}
+							<a class="btn-sm btn-primary" href="{{ appointment.meeting_link }}" target="_blank" rel="noopener noreferrer">
+								<i class="fas fa-phone" aria-hidden="true"></i> Join Call
+							</a>
+						{% else %}
+							<span class="status-badge badge-warning">Link pending</span>
+						{% endif %}
+					</div>
+				</div>
+			{% empty %}
+				<p class="text-muted">No upcoming telemedicine visits requested.</p>
+			{% endfor %}
+		</div>
+
+		<p class="text-muted">
+			<a href="{% url 'telemedicine_history' %}">View past telemedicine visits &rarr;</a>
+		</p>
+	</div>
+</body>
+</html>

@@ -1,0 +1,61 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Invoices</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Invoices</h1>
+				<p>All invoices on file for you.</p>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'patient_dashboard' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Dashboard
+			</a>
+		</div>
+
+		<div class="card">
+			<table class="billing-table">
+				<thead>
+					<tr>
+						<th scope="col">Visit</th>
+						<th scope="col">Date</th>
+						<th scope="col">Total</th>
+						<th scope="col">Paid</th>
+						<th scope="col">Balance</th>
+						<th scope="col">Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for invoice in invoices %}
+						<tr>
+							<td>{{ invoice.visit.get_visit_type_display }}</td>
+							<td>{{ invoice.created_at|date:"M j, Y" }}</td>
+							<td>${{ invoice.total_amount }}</td>
+							<td>${{ invoice.amount_paid }}</td>
+							<td>${{ invoice.balance_due }}</td>
+							<td>
+								{% if invoice.status == "PAID" %}
+									<span class="status-badge badge-success">Paid</span>
+								{% elif invoice.status == "PARTIAL" %}
+									<span class="status-badge badge-warning">Partial</span>
+								{% else %}
+									<span class="status-badge badge-danger">Unpaid</span>
+								{% endif %}
+							</td>
+						</tr>
+					{% empty %}
+						<tr><td colspan="6" class="text-muted">No invoices yet.</td></tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</body>
+</html>

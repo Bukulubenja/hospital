@@ -1,0 +1,165 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Medical Records</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+	<style>
+		@media print {
+			.no-print { display: none !important; }
+			body { background: white; }
+			.card { box-shadow: none; border: 1px solid var(--border); }
+		}
+	</style>
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header no-print">
+			<div class="header-left">
+				<h1>Medical Records</h1>
+				<p>A printable summary of your visits, prescriptions, and lab results.</p>
+			</div>
+			<div style="display: flex; gap: 0.75rem;">
+				<button type="button" class="btn-sm btn-primary" onclick="window.print()">
+					<i class="fas fa-print" aria-hidden="true"></i> Print / Save as PDF
+				</button>
+				<a class="btn-sm btn-secondary" href="{% url 'patient_dashboard' %}">
+					<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Dashboard
+				</a>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon primary"><i class="fas fa-user" aria-hidden="true"></i></div>
+					{{ patient.full_name }}
+				</h2>
+			</div>
+			<div class="patient-overview">
+				<div class="info-box">
+					<div class="info-label">Medical ID</div>
+					<div class="info-value">{{ patient.patient_number }}</div>
+				</div>
+				<div class="info-box">
+					<div class="info-label">Date of Birth</div>
+					<div class="info-value">{{ patient.date_of_birth|date:"M j, Y" }}</div>
+				</div>
+				<div class="info-box">
+					<div class="info-label">Blood Group</div>
+					<div class="info-value">{{ patient.blood_group|default:"—" }}</div>
+				</div>
+				<div class="info-box">
+					<div class="info-label">Generated</div>
+					<div class="info-value" style="font-size: 1.1rem;">{{ generated_at|date:"M j, Y g:i A" }}</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon secondary"><i class="fas fa-hospital" aria-hidden="true"></i></div>
+					Visits
+				</h2>
+			</div>
+			<table class="billing-table">
+				<thead>
+					<tr>
+						<th scope="col">Date</th>
+						<th scope="col">Doctor</th>
+						<th scope="col">Type</th>
+						<th scope="col">Diagnosis Summary</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for visit in visits %}
+						<tr>
+							<td>{{ visit.visit_date|date:"M j, Y" }}</td>
+							<td>{{ visit.doctor.get_full_name|default:"—" }}</td>
+							<td>{{ visit.get_visit_type_display }}</td>
+							<td>{{ visit.diagnosis_summary|default:"—" }}</td>
+						</tr>
+					{% empty %}
+						<tr><td colspan="4" class="text-muted">No visits on file.</td></tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon warning"><i class="fas fa-file-medical" aria-hidden="true"></i></div>
+					Medical Records
+				</h2>
+			</div>
+			<div class="timeline">
+				{% for record in medical_records %}
+					<div class="timeline-item">
+						<div class="timeline-content">
+							<div class="timeline-date">{{ record.created_at|date:"F j, Y" }}</div>
+							<div class="timeline-title">{{ record.doctor.get_full_name|default:"—" }}</div>
+							<div class="timeline-description"><strong>Diagnosis:</strong> {{ record.diagnosis }}</div>
+							{% if record.notes %}<div class="timeline-description">{{ record.notes }}</div>{% endif %}
+						</div>
+					</div>
+				{% empty %}
+					<p class="text-muted">No medical records on file.</p>
+				{% endfor %}
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon success"><i class="fas fa-prescription" aria-hidden="true"></i></div>
+					Prescriptions
+				</h2>
+			</div>
+			{% for prescription in prescriptions %}
+				<div style="margin-bottom: 1rem;">
+					<div class="text-muted">{{ prescription.created_at|date:"M j, Y" }} — {{ prescription.doctor.get_full_name|default:"—" }}</div>
+					{% for item in prescription.items.all %}
+						<div class="prescription-item">
+							<div class="prescription-name">{{ item.drug.name }} {{ item.drug.strength }}</div>
+							<div class="prescription-details">{{ item.dosage }} — {{ item.frequency }} — {{ item.duration }}</div>
+						</div>
+					{% endfor %}
+				</div>
+			{% empty %}
+				<p class="text-muted">No prescriptions on file.</p>
+			{% endfor %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon danger"><i class="fas fa-flask" aria-hidden="true"></i></div>
+					Lab Orders &amp; Results
+				</h2>
+			</div>
+			{% for order in lab_orders %}
+				<div style="margin-bottom: 1rem;">
+					<div class="text-muted">{{ order.created_at|date:"M j, Y" }} — {{ order.get_status_display }}</div>
+					<div class="tile-grid">
+						{% for result in order.results.all %}
+							<div class="tile tile-success">
+								<div class="tile-title">{{ result.test.name }}</div>
+								<div class="tile-subtitle">{{ result.result_value }} {% if result.normal_range %}(normal: {{ result.normal_range }}){% endif %}</div>
+							</div>
+						{% empty %}
+							<p class="text-muted">Results pending.</p>
+						{% endfor %}
+					</div>
+				</div>
+			{% empty %}
+				<p class="text-muted">No lab orders on file.</p>
+			{% endfor %}
+		</div>
+	</div>
+</body>
+</html>

@@ -67,6 +67,39 @@
 				<p class="empty-state">No patients waiting.</p>
 			{% endif %}
 		</div>
+
+		<div class="card">
+			<h2>Pending refill requests</h2>
+			{% if pending_refill_requests %}
+				<table>
+					<thead>
+						<tr><th>Patient</th><th>Drug</th><th>Requested</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for refill_request in pending_refill_requests %}
+							<tr>
+								<td>{{ refill_request.patient.full_name }}</td>
+								<td>{{ refill_request.prescription_item.drug.name }}</td>
+								<td>{{ refill_request.requested_at|date:"M j, Y" }}</td>
+								<td>
+									<form method="post" action="{% url 'refill_request_approve' refill_request.pk %}" style="display:inline">
+										{% csrf_token %}
+										<button class="btn" type="submit">Approve</button>
+									</form>
+									<form method="post" action="{% url 'refill_request_deny' refill_request.pk %}" style="display:inline-flex; gap:4px; align-items:center;">
+										{% csrf_token %}
+										<input type="text" name="reason" placeholder="Reason for denial" required>
+										<button class="btn" type="submit">Deny</button>
+									</form>
+								</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No pending refill requests.</p>
+			{% endif %}
+		</div>
 	</div>
 </body>
 </html>
