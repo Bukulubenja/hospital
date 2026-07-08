@@ -1,0 +1,77 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Appointments</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>Appointments</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'reception_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<form class="search-bar" method="get">
+				<input type="text" name="q" placeholder="Search by patient name or number" value="{{ query }}">
+				<input type="date" name="date" value="{{ date }}">
+				<select name="status">
+					<option value="">All statuses</option>
+					{% for value, label in status_choices %}
+						<option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ label }}</option>
+					{% endfor %}
+				</select>
+				<button class="btn" type="submit">Filter</button>
+				<a class="btn-ghost" href="{% url 'appointment_list' %}">Reset</a>
+				<a class="btn-ghost" href="{% url 'appointment_create' %}">Book appointment</a>
+			</form>
+		</div>
+
+		<div class="card">
+			{% if appointments %}
+				<table>
+					<thead>
+						<tr><th>Date</th><th>Patient</th><th>Doctor</th><th>Department</th><th>Status</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for appointment in appointments %}
+							<tr>
+								<td>{{ appointment.appointment_date|date:"Y-m-d H:i" }}</td>
+								<td>{{ appointment.patient.full_name }}</td>
+								<td>{{ appointment.doctor.get_full_name|default:"Unassigned" }}</td>
+								<td>{{ appointment.department.name|default:"—" }}</td>
+								<td><span class="badge badge-{{ appointment.status|lower }}">{{ appointment.get_status_display }}</span></td>
+								<td class="actions">
+									{% if appointment.is_checked_in %}
+										<span class="muted">Checked in</span>
+									{% elif appointment.status == "SCHEDULED" %}
+										<form method="post" action="{% url 'appointment_checkin' appointment.pk %}">
+											{% csrf_token %}
+											<button type="submit" class="btn-ghost">Check in</button>
+										</form>
+									{% endif %}
+								</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No appointments match your filters.</p>
+			{% endif %}
+		</div>
+	</div>
+</body>
+</html>

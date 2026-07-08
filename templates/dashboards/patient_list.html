@@ -1,0 +1,56 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Patients</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>Patients</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'reception_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		<div class="card">
+			<form class="search-bar" method="get">
+				<input type="text" name="q" placeholder="Search by name, phone or patient number" value="{{ query }}">
+				<button class="btn" type="submit">Search</button>
+				<a class="btn-ghost" href="{% url 'patient_create' %}">Register new patient</a>
+			</form>
+		</div>
+
+		<div class="card">
+			{% if patients %}
+				<table>
+					<thead>
+						<tr><th>Patient #</th><th>Name</th><th>Gender</th><th>Phone</th><th>Blood group</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for patient in patients %}
+							<tr>
+								<td>{{ patient.patient_number }}</td>
+								<td>{{ patient.full_name }}</td>
+								<td>{{ patient.get_gender_display }}</td>
+								<td>{{ patient.phone }}</td>
+								<td>{{ patient.blood_group|default:"—" }}</td>
+								<td class="actions">
+									<a class="btn-ghost" href="{% url 'appointment_create' %}?patient={{ patient.pk }}">Book appointment</a>
+								</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">
+					{% if query %}No patients matched "{{ query }}".{% else %}No patients registered yet.{% endif %}
+				</p>
+			{% endif %}
+		</div>
+	</div>
+</body>
+</html>

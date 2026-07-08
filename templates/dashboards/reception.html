@@ -1,141 +1,115 @@
-
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width,initial-scale=1">
 	<title>Reception Dashboard</title>
-	<style>
-		:root{--accent:#0b78d1;--muted:#666}
-		body{font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f5f7fb;color:#222}
-		header{background:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e6e9ef}
-		header h1{margin:0;font-size:18px}
-		.container{display:flex;gap:20px;padding:20px;max-width:1200px;margin:0 auto}
-		nav{width:220px;background:white;border:1px solid #e6e9ef;border-radius:8px;padding:12px}
-		.main{flex:1;display:flex;flex-direction:column;gap:16px}
-		.card{background:white;padding:12px;border:1px solid #e6e9ef;border-radius:8px}
-		.search{display:flex;gap:8px}
-		input[type=text]{flex:1;padding:8px;border:1px solid #d7dce6;border-radius:6px}
-		button{background:var(--accent);color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer}
-		.list{max-height:360px;overflow:auto}
-		table{width:100%;border-collapse:collapse}
-		th,td{padding:8px 6px;text-align:left;border-bottom:1px solid #f0f2f5;font-size:14px}
-		th{color:var(--muted);font-weight:600}
-		.muted{color:var(--muted);font-size:13px}
-		.actions{display:flex;gap:6px}
-		.btn-ghost{background:transparent;color:var(--accent);border:1px solid #d7e9fb;padding:6px 8px;border-radius:6px}
-		footer{padding:12px;text-align:center;color:var(--muted);font-size:13px}
-		@media(max-width:880px){.container{flex-direction:column;padding:12px}nav{width:100%}}
-	</style>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
 </head>
 <body>
 	<header>
 		<h1>Reception — Dashboard</h1>
-		<div style="display:flex;gap:12px;align-items:center">
-			<div class="muted">Today: <strong id="today"></strong></div>
-			<button onclick="newPatient()">New Patient</button>
+		<div class="header-actions">
+			<span class="muted">{{ request.user.get_full_name|default:request.user.username }}</span>
+			<a class="btn-ghost" href="{% url 'logout' %}">Log out</a>
 		</div>
 	</header>
 
 	<div class="container">
-		<nav class="card">
-			<div style="margin-bottom:12px"><strong>Quick Actions</strong></div>
-			<div style="display:flex;flex-direction:column;gap:8px">
-				<button class="btn-ghost" onclick="focusSearch()">Search patient</button>
-				<button class="btn-ghost" onclick="openCheckin()">Check-in</button>
-				<button class="btn-ghost" onclick="openAppointment()">Schedule appt.</button>
-				<button class="btn-ghost" onclick="openMessages()">Messages</button>
-			</div>
-			<hr style="margin:12px 0;border:none;border-top:1px solid #f0f2f5">
-			<div><strong>Counters</strong></div>
-			<div style="display:flex;gap:10px;margin-top:10px">
-				<div style="flex:1;background:#f8fbff;padding:10px;border-radius:6px;text-align:center"><div class="muted">Waiting</div><div style="font-weight:700">6</div></div>
-				<div style="flex:1;background:#fff7f0;padding:10px;border-radius:6px;text-align:center"><div class="muted">Today</div><div style="font-weight:700">14</div></div>
-			</div>
-		</nav>
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
 
-		<main class="main">
-			<div class="card">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-					<strong>Appointments</strong>
-					<div class="search">
-						<input id="search" type="text" placeholder="Search by name or ID" oninput="filterPatients()">
-						<button onclick="filterPatients()">Search</button>
-					</div>
+		<div class="card">
+			<div class="stat-row">
+				<div class="stat">
+					<div class="value">{{ todays_count }}</div>
+					<div class="label">Appointments today</div>
 				</div>
-				<div class="list">
-					<table id="appt-table">
-						<thead>
-							<tr><th>Time</th><th>Patient</th><th>Service</th><th>Provider</th><th></th></tr>
-						</thead>
-						<tbody>
-							<!-- rows populated by JS -->
-						</tbody>
-					</table>
+				<div class="stat">
+					<div class="value">{{ waiting_count }}</div>
+					<div class="label">Waiting in queue</div>
 				</div>
 			</div>
+		</div>
 
-			<div style="display:grid;grid-template-columns:1fr 320px;gap:16px">
-				<div class="card">
-					<strong>Check-in Queue</strong>
-					<div class="list" style="margin-top:10px">
-						<table id="queue-table">
-							<thead><tr><th>Room</th><th>Patient</th><th>ETA</th><th></th></tr></thead>
-							<tbody></tbody>
-						</table>
-					</div>
-				</div>
-
-				<div class="card">
-					<strong>Notifications</strong>
-					<ul id="notes" style="margin:10px 0 0 0;padding-left:18px;color:var(--muted)"></ul>
-				</div>
+		<div class="card">
+			<div class="card-header">
+				<strong>Quick actions</strong>
 			</div>
-		</main>
+			<div class="actions">
+				<a class="btn" href="{% url 'patient_create' %}">Register new patient</a>
+				<a class="btn-ghost" href="{% url 'patient_list' %}">Search patients</a>
+				<a class="btn-ghost" href="{% url 'appointment_create' %}">Book appointment</a>
+				<a class="btn-ghost" href="{% url 'appointment_list' %}">All appointments</a>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Today's appointments</strong>
+			</div>
+			{% if todays_appointments %}
+				<table>
+					<thead>
+						<tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Department</th><th>Status</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for appointment in todays_appointments %}
+							<tr>
+								<td>{{ appointment.appointment_date|date:"H:i" }}</td>
+								<td>{{ appointment.patient.full_name }}</td>
+								<td>{{ appointment.doctor.get_full_name|default:"Unassigned" }}</td>
+								<td>{{ appointment.department.name|default:"—" }}</td>
+								<td><span class="badge badge-{{ appointment.status|lower }}">{{ appointment.get_status_display }}</span></td>
+								<td class="actions">
+									{% if appointment.is_checked_in %}
+										<span class="muted">Checked in</span>
+									{% elif appointment.status == "SCHEDULED" %}
+										<form method="post" action="{% url 'appointment_checkin' appointment.pk %}">
+											{% csrf_token %}
+											<button type="submit" class="btn-ghost">Check in</button>
+										</form>
+									{% endif %}
+								</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No appointments scheduled for today.</p>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<strong>Check-in queue</strong>
+			</div>
+			{% if active_queue %}
+				<table>
+					<thead>
+						<tr><th>#</th><th>Patient</th><th>Doctor</th><th>Checked in</th></tr>
+					</thead>
+					<tbody>
+						{% for ticket in active_queue %}
+							<tr>
+								<td>{{ ticket.queue_number }}</td>
+								<td>{{ ticket.visit.patient.full_name }}</td>
+								<td>{{ ticket.visit.doctor.get_full_name|default:"Unassigned" }}</td>
+								<td>{{ ticket.created_at|date:"H:i" }}</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No patients waiting.</p>
+			{% endif %}
+		</div>
 	</div>
-
-	<footer>Reception Dashboard • Simple HMS</footer>
-
-	<script>
-		const todayEl = document.getElementById('today');
-		todayEl.textContent = new Date().toLocaleDateString();
-
-		const appts = [
-			{time:'09:00', name:'John Doe', service:'Consultation', provider:'Dr. Smith'},
-			{time:'09:30', name:'Mary Lee', service:'Follow-up', provider:'Dr. Patel'},
-			{time:'10:00', name:'Sam Green', service:'X-Ray', provider:'Imaging'},
-			{time:'10:30', name:'Anna Kim', service:'Vaccination', provider:'Nurse Joy'}
-		];
-
-		const queue = [
-			{room:'1',name:'Eve Stone',eta:'5m'},
-			{room:'2',name:'Liam Fox',eta:'10m'},
-			{room:'3',name:'Olga Ray',eta:'15m'}
-		];
-
-		function renderTable(){
-			const tb = document.querySelector('#appt-table tbody'); tb.innerHTML='';
-			appts.forEach(a=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${a.time}</td><td>${a.name}</td><td>${a.service}</td><td>${a.provider}</td><td class="actions"><button class="btn-ghost" onclick="checkin('${a.name.replace(/'/g,"\\'")}')">Check-in</button></td>`;tb.appendChild(tr)});
-			const tq = document.querySelector('#queue-table tbody'); tq.innerHTML='';
-			queue.forEach(q=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${q.room}</td><td>${q.name}</td><td>${q.eta}</td><td><button class="btn-ghost" onclick="seat('${q.name.replace(/'/g,"\\'")}')">Seat</button></td>`;tq.appendChild(tr)});
-			const notes = document.getElementById('notes'); notes.innerHTML=''; ['Lab results ready for Mary Lee','Insurance update needed: Sam Green'].forEach(n=>{const li=document.createElement('li');li.textContent=n;notes.appendChild(li)});
-		}
-
-		function filterPatients(){
-			const q = document.getElementById('search').value.toLowerCase();
-			const rows = document.querySelectorAll('#appt-table tbody tr');
-			rows.forEach(r=>{const txt=r.textContent.toLowerCase();r.style.display = txt.includes(q)?'':'none'});
-		}
-
-		function focusSearch(){document.getElementById('search').focus();}
-		function newPatient(){alert('Open new patient form (stub)')}
-		function openCheckin(){alert('Open check-in panel (stub)')}
-		function openAppointment(){alert('Open schedule appointment (stub)')}
-		function openMessages(){alert('Open messages (stub)')}
-		function checkin(name){alert('Checking in: '+name)}
-		function seat(name){alert('Seating: '+name)}
-
-		renderTable();
-	</script>
 </body>
 </html>

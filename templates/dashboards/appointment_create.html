@@ -1,0 +1,49 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Book Appointment</title>
+	<link rel="stylesheet" href="{% static 'css/reception.css' %}">
+</head>
+<body>
+	<header>
+		<h1>Book Appointment</h1>
+		<div class="header-actions">
+			<a class="back-link" href="{% url 'reception_dashboard' %}">&larr; Dashboard</a>
+		</div>
+	</header>
+
+	<div class="container">
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<form class="stacked" method="post" novalidate>
+				{% csrf_token %}
+				{% for field in form %}
+					<div>
+						<label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+						{{ field }}
+						{% if field.errors %}
+							<ul class="errorlist">
+								{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+							</ul>
+						{% endif %}
+					</div>
+				{% endfor %}
+				<button class="btn" type="submit">Book appointment</button>
+			</form>
+			<p class="muted" style="margin-top:12px">
+				Don't see the patient? <a class="back-link" href="{% url 'patient_create' %}">Register a new patient</a> first.
+			</p>
+		</div>
+	</div>
+</body>
+</html>
