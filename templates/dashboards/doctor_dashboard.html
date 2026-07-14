@@ -69,6 +69,18 @@
 		</div>
 
 		<div class="card">
+			<h2>Messages</h2>
+			<p>
+				{% if unread_message_count %}
+					You have <strong>{{ unread_message_count }}</strong> unread message{{ unread_message_count|pluralize }}.
+				{% else %}
+					No unread messages.
+				{% endif %}
+			</p>
+			<a class="btn" href="{% url 'doctor_messages' %}">Open Inbox</a>
+		</div>
+
+		<div class="card">
 			<h2>Pending refill requests</h2>
 			{% if pending_refill_requests %}
 				<table>

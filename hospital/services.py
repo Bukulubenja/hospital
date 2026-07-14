@@ -1,14 +1,17 @@
 # services.py
 
 import re
+from datetime import timedelta
 
 from django.db import transaction
 from django.utils import timezone
 
 from .models import (
     LabResult,
+    Notification,
     Prescription,
     PrescriptionItem,
+    QueueTicket,
     ServiceGate,
     Stock,
     StockTransaction,
@@ -19,10 +22,51 @@ from .models import (
 _DURATION_RE = re.compile(r"(\d+)\s*(day|week|month)", re.IGNORECASE)
 _DURATION_UNIT_DAYS = {"day": 1, "week": 7, "month": 30}
 
+# Rough per-patient consultation time used only to give the patient a
+# ballpark wait estimate — there's no real scheduling/timing model to
+# derive this from more precisely.
+AVERAGE_CONSULTATION_MINUTES = 15
+
 
 def patient_for_user(user):
     """Return the Patient record linked to this login, or None if unlinked."""
     return getattr(user, "patient_profile", None)
+
+
+def create_notification(user, title, description=""):
+    """Create a Notification for `user`, or no-op if `user` is None (e.g. a
+    Patient not linked to a login account yet)."""
+    if user is None:
+        return None
+    return Notification.objects.create(user=user, title=title, description=description)
+
+
+def queue_snapshot_for_patient(patient):
+    """
+    Real (not fabricated) queue position for a patient's active, unserved
+    ticket today: their queue number, how many unserved tickets are ahead
+    of (and including) theirs, and a rough wait estimate from that count.
+    Returns None if the patient has no active ticket today.
+    """
+    today = timezone.localdate()
+    ticket = (
+        QueueTicket.objects.filter(visit__patient=patient, created_at__date=today, served=False)
+        .order_by("-created_at")
+        .first()
+    )
+    if ticket is None:
+        return None
+
+    position = QueueTicket.objects.filter(
+        created_at__date=today, served=False, queue_number__lte=ticket.queue_number
+    ).count()
+    wait_minutes = position * AVERAGE_CONSULTATION_MINUTES
+    return {
+        "queue_number": ticket.queue_number,
+        "position": position,
+        "estimated_wait_minutes": wait_minutes,
+        "estimated_time": timezone.localtime() + timedelta(minutes=wait_minutes),
+    }
 
 
 def days_left_for_prescription_item(item):
@@ -191,6 +235,11 @@ def approve_refill_request(refill_request, doctor):
             update_fields=["status", "reviewed_by", "reviewed_at", "new_prescription_item"]
         )
 
+    create_notification(
+        refill_request.patient.user,
+        "Refill approved",
+        f"Your refill for {source_item.drug.name} was approved and sent to pharmacy.",
+    )
     return visit
 
 
@@ -200,3 +249,9 @@ def deny_refill_request(refill_request, doctor, reason):
     refill_request.reviewed_at = timezone.now()
     refill_request.denial_reason = reason
     refill_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "denial_reason"])
+
+    create_notification(
+        refill_request.patient.user,
+        "Refill request denied",
+        reason,
+    )

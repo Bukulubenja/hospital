@@ -20,6 +20,16 @@ urlpatterns = [
     path("appointments/new/", views.appointment_create, name="appointment_create"),
     path("appointments/<int:pk>/checkin/", views.appointment_checkin, name="appointment_checkin"),
     path("appointments/<int:pk>/meeting-link/", views.set_meeting_link, name="set_meeting_link"),
+    path(
+        "reception/emergency-alerts/<int:pk>/acknowledge/",
+        views.emergency_alert_acknowledge,
+        name="emergency_alert_acknowledge",
+    ),
+    path(
+        "reception/emergency-alerts/<int:pk>/resolve/",
+        views.emergency_alert_resolve,
+        name="emergency_alert_resolve",
+    ),
     path("visits/<int:pk>/", views.visit_detail, name="visit_detail"),
     path("visits/<int:pk>/start/", views.visit_start, name="visit_start"),
     path("visits/<int:pk>/vitals/", views.visit_record_vitals, name="visit_record_vitals"),
@@ -53,6 +63,8 @@ urlpatterns = [
     path("stock/drugs/<int:pk>/adjust/", views.adjust_stock, name="adjust_stock"),
     path("doctor/refill-requests/<int:pk>/approve/", views.refill_request_approve, name="refill_request_approve"),
     path("doctor/refill-requests/<int:pk>/deny/", views.refill_request_deny, name="refill_request_deny"),
+    path("doctor/messages/", views.doctor_messages, name="doctor_messages"),
+    path("doctor/messages/<int:patient_pk>/", views.doctor_message_thread, name="doctor_message_thread"),
     path("patient/prescription-refill/", views.prescription_refill, name="prescription_refill"),
     path(
         "patient/prescription-refill/<int:item_pk>/request/",
@@ -62,6 +74,19 @@ urlpatterns = [
     path("patient/telemedicine/", views.telemedicine_start, name="telemedicine_start"),
     path("patient/telemedicine/history/", views.telemedicine_history, name="telemedicine_history"),
     path("patient/records/", views.records_download, name="records_download"),
+    path(
+        "patient/appointments/<int:pk>/cancel/",
+        views.patient_appointment_cancel,
+        name="patient_appointment_cancel",
+    ),
+    path(
+        "patient/notifications/mark-all-read/",
+        views.notifications_mark_all_read,
+        name="notifications_mark_all_read",
+    ),
+    path("patient/emergency-alert/", views.emergency_alert_create, name="emergency_alert_create"),
+    path("patient/messages/", views.patient_messages, name="patient_messages"),
+    path("patient/messages/<int:doctor_pk>/", views.patient_message_thread, name="patient_message_thread"),
     path("lab_result_list/", views.lab_result_list, name="lab_result_list"),
     path("invoice_list/", views.invoice_list, name="invoice_list"),
 ]

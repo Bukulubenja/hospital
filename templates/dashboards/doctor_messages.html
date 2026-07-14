@@ -1,0 +1,50 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Messages</title>
+	<link rel="stylesheet" href="{% static 'css/doctor.css' %}">
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>Messages</h1>
+			<a class="back-link" href="{% url 'doctor_dashboard' %}">Back to Dashboard</a>
+		</div>
+
+		{% if messages %}
+			<ul class="messages">
+				{% for message in messages %}
+					<li class="{{ message.tags }}">{{ message }}</li>
+				{% endfor %}
+			</ul>
+		{% endif %}
+
+		<div class="card">
+			<h2>Conversations</h2>
+			{% if conversations %}
+				<table>
+					<thead>
+						<tr><th>Patient</th><th>Last message</th><th>When</th><th>Unread</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for conversation in conversations %}
+							<tr>
+								<td>{{ conversation.patient.full_name }}</td>
+								<td>{{ conversation.latest.body|truncatechars:60 }}</td>
+								<td>{{ conversation.latest.created_at|timesince }} ago</td>
+								<td>{% if conversation.unread %}<strong>{{ conversation.unread }}</strong>{% else %}—{% endif %}</td>
+								<td><a class="btn" href="{% url 'doctor_message_thread' conversation.patient.pk %}">Open</a></td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No conversations yet.</p>
+			{% endif %}
+		</div>
+	</div>
+</body>
+</html>

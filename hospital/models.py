@@ -657,3 +657,85 @@ class AuditLog(models.Model):
     def __str__(self):
         username = self.user.username if self.user else "Unknown User"
         return f"{username} - {self.action} on {self.table_name} (ID: {self.record_id})"
+
+
+# =====================================================================
+# Patient-facing: emergency alerts, notifications, secure messaging
+# =====================================================================
+
+class EmergencyAlert(models.Model):
+
+    class Severity(models.TextChoices):
+        CRITICAL = "CRITICAL", "Critical"
+        URGENT = "URGENT", "Urgent"
+        MODERATE = "MODERATE", "Moderate"
+
+    class Status(models.TextChoices):
+        NEW = "NEW", "New"
+        ACKNOWLEDGED = "ACKNOWLEDGED", "Acknowledged"
+        RESOLVED = "RESOLVED", "Resolved"
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="emergency_alerts")
+    severity = models.CharField(max_length=20, choices=Severity.choices)
+    details = models.TextField(blank=True)
+    # Only populated if the patient opted to share their location.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="emergency_alerts_acknowledged",
+    )
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def has_location(self):
+        return self.latitude is not None and self.longitude is not None
+
+    def __str__(self):
+        return f"{self.get_severity_display()} alert for {self.patient.full_name}"
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
+    title = models.CharField(max_length=200)
+    description = models.CharField(max_length=300, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} -> {self.user.username}"
+
+
+class Message(models.Model):
+    """A message in the (patient, doctor) conversation thread — `sender`
+    disambiguates direction since either party can post to the same thread."""
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="messages")
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="messages_as_doctor",
+        limit_choices_to={"role": User.Role.DOCTOR},
+    )
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="messages_sent")
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Message from {self.sender.username} in {self.patient.full_name} <-> Dr. {self.doctor.username} thread"

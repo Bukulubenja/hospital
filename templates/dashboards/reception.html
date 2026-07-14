@@ -52,6 +52,51 @@
 
 		<div class="card">
 			<div class="card-header">
+				<strong>Emergency alerts</strong>
+			</div>
+			{% if active_emergency_alerts %}
+				<table>
+					<thead>
+						<tr><th>Severity</th><th>Patient</th><th>Details</th><th>Location</th><th>Raised</th><th>Status</th><th></th></tr>
+					</thead>
+					<tbody>
+						{% for alert in active_emergency_alerts %}
+							<tr>
+								<td><span class="badge badge-{{ alert.severity|lower }}">{{ alert.get_severity_display }}</span></td>
+								<td>{{ alert.patient.full_name }}</td>
+								<td>{{ alert.details|default:"—" }}</td>
+								<td>
+									{% if alert.has_location %}
+										<a href="https://maps.google.com/?q={{ alert.latitude }},{{ alert.longitude }}" target="_blank" rel="noopener noreferrer">View map</a>
+									{% else %}
+										Not shared
+									{% endif %}
+								</td>
+								<td>{{ alert.created_at|timesince }} ago</td>
+								<td><span class="badge badge-{{ alert.status|lower }}">{{ alert.get_status_display }}</span></td>
+								<td class="actions">
+									{% if alert.status == "NEW" %}
+										<form method="post" action="{% url 'emergency_alert_acknowledge' alert.pk %}">
+											{% csrf_token %}
+											<button type="submit" class="btn-ghost">Acknowledge</button>
+										</form>
+									{% endif %}
+									<form method="post" action="{% url 'emergency_alert_resolve' alert.pk %}">
+										{% csrf_token %}
+										<button type="submit" class="btn-ghost">Resolve</button>
+									</form>
+								</td>
+							</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			{% else %}
+				<p class="empty-state">No active emergency alerts.</p>
+			{% endif %}
+		</div>
+
+		<div class="card">
+			<div class="card-header">
 				<strong>Today's appointments</strong>
 			</div>
 			{% if todays_appointments %}

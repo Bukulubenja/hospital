@@ -11,6 +11,7 @@ from .models import (
     PrescriptionItem,
     Service,
     Stock,
+    User,
     VitalSigns,
 )
 
@@ -94,6 +95,22 @@ class PatientTelemedicineForm(forms.ModelForm):
 
 class MeetingLinkForm(forms.Form):
     meeting_link = forms.URLField(label="Meeting link")
+
+
+class MessageComposeForm(forms.Form):
+    """Starts a new message thread — the doctor dropdown is scoped by the
+    view to only doctors who have actually treated the sender's patient."""
+
+    doctor = forms.ModelChoiceField(queryset=User.objects.none(), empty_label="Choose a doctor")
+    body = forms.CharField(widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Type your message..."}))
+
+    def __init__(self, *args, doctor_queryset=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["doctor"].queryset = doctor_queryset
+
+
+class MessageReplyForm(forms.Form):
+    body = forms.CharField(widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Type your reply..."}))
 
 
 class VitalSignsForm(forms.ModelForm):

@@ -1,0 +1,66 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Conversation with Dr. {{ doctor.get_full_name|default:doctor.username }}</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 720px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Dr. {{ doctor.get_full_name|default:doctor.username }}</h1>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'patient_messages' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> All Conversations
+			</a>
+		</div>
+
+		{% if messages %}
+			<div style="margin-bottom: 1.5rem;">
+				{% for message in messages %}
+					<div class="card" style="border-left: 4px solid {% if message.tags == 'error' %}var(--danger){% else %}var(--success){% endif %}; margin-bottom: 0.75rem;">
+						{{ message }}
+					</div>
+				{% endfor %}
+			</div>
+		{% endif %}
+
+		<div class="card">
+			{% for item in thread %}
+				<div class="message-item" style="{% if item.sender_id == request.user.id %}border-left-color: var(--primary);{% endif %}">
+					<div class="message-header">
+						<div class="message-from">{% if item.sender_id == request.user.id %}You{% else %}Dr. {{ doctor.get_full_name|default:doctor.username }}{% endif %}</div>
+						<div class="message-time">{{ item.created_at|date:"M j, Y H:i" }}</div>
+					</div>
+					<div class="message-preview">{{ item.body|linebreaksbr }}</div>
+				</div>
+			{% empty %}
+				<p class="text-muted">No messages yet — say hello.</p>
+			{% endfor %}
+		</div>
+
+		<div class="card">
+			<form method="post" novalidate>
+				{% csrf_token %}
+				{% for field in form %}
+					<div class="form-group">
+						{{ field }}
+						{% if field.errors %}
+							<ul class="errorlist">
+								{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+							</ul>
+						{% endif %}
+					</div>
+				{% endfor %}
+				<button type="submit" class="btn-sm btn-primary">
+					<i class="fas fa-paper-plane" aria-hidden="true"></i> Send Reply
+				</button>
+			</form>
+		</div>
+	</div>
+</body>
+</html>

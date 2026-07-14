@@ -9,12 +9,15 @@ from .models import (
     Department,
     Doctor,
     Drug,
+    EmergencyAlert,
     InvoiceItem,
     LabOrder,
     LabOrderItem,
     LabResult,
     LabTest,
     MedicalRecord,
+    Message,
+    Notification,
     Nurse,
     Patient,
     Payment,
@@ -340,3 +343,34 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
+
+
+# =====================================================================
+# Patient-facing: emergency alerts, notifications, secure messaging
+# =====================================================================
+
+@admin.register(EmergencyAlert)
+class EmergencyAlertAdmin(admin.ModelAdmin):
+    list_display = ("patient", "severity", "status", "has_location", "created_at", "acknowledged_by")
+    list_filter = ("severity", "status")
+    search_fields = ("patient__full_name",)
+    date_hierarchy = "created_at"
+    autocomplete_fields = ("patient", "acknowledged_by")
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ("title", "user", "is_read", "created_at")
+    list_filter = ("is_read",)
+    search_fields = ("title", "user__username")
+    date_hierarchy = "created_at"
+    autocomplete_fields = ("user",)
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ("patient", "doctor", "sender", "is_read", "created_at")
+    list_filter = ("is_read",)
+    search_fields = ("patient__full_name", "doctor__username", "body")
+    date_hierarchy = "created_at"
+    autocomplete_fields = ("patient", "doctor", "sender")

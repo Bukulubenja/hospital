@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.test import TestCase
@@ -9,11 +10,14 @@ from .models import (
     Bed,
     Department,
     Drug,
+    EmergencyAlert,
     LabOrder,
     LabOrderItem,
     LabResult,
     LabTest,
     MedicalRecord,
+    Message,
+    Notification,
     Patient,
     Payment,
     Prescription,
@@ -1072,6 +1076,10 @@ class PatientWorkflowTests(TestCase):
             phone="0700000011", patient_number="P-300002",
         )
 
+        self.receptionist = User.objects.create_user(
+            username="recep1", password="pass1234", role=User.Role.RECEPTIONIST
+        )
+
         self.drug = Drug.objects.create(
             name="Amlodipine", category="Cardiovascular", strength="5mg", unit_price=5
         )
@@ -1253,3 +1261,151 @@ class PatientWorkflowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context["visits"]), [self.visit])
+
+    def test_patient_can_cancel_own_scheduled_appointment(self):
+        appointment = Appointment.objects.create(
+            patient=self.patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now() + timedelta(days=1),
+            status=Appointment.Status.SCHEDULED,
+        )
+
+        response = self.client.post(reverse("patient_appointment_cancel", args=[appointment.pk]))
+
+        self.assertRedirects(response, reverse("patient_dashboard"))
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.CANCELLED)
+
+    def test_patient_cannot_cancel_other_patients_appointment(self):
+        appointment = Appointment.objects.create(
+            patient=self.other_patient, doctor=self.doctor, department=self.department,
+            appointment_date=timezone.now() + timedelta(days=1),
+            status=Appointment.Status.SCHEDULED,
+        )
+
+        response = self.client.post(reverse("patient_appointment_cancel", args=[appointment.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.SCHEDULED)
+
+    def test_notifications_mark_all_read(self):
+        Notification.objects.create(user=self.patient_user, title="First")
+        Notification.objects.create(user=self.patient_user, title="Second")
+
+        response = self.client.post(reverse("notifications_mark_all_read"))
+
+        self.assertRedirects(response, reverse("patient_dashboard"))
+        self.assertEqual(Notification.objects.filter(user=self.patient_user, is_read=False).count(), 0)
+
+    def test_emergency_alert_create_without_location(self):
+        response = self.client.post(
+            reverse("emergency_alert_create"),
+            data=json.dumps({
+                "severity": "CRITICAL", "share_location": False, "details": "Chest pain",
+            }),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        alert = EmergencyAlert.objects.get(patient=self.patient)
+        self.assertEqual(alert.severity, EmergencyAlert.Severity.CRITICAL)
+        self.assertEqual(alert.status, EmergencyAlert.Status.NEW)
+        self.assertIsNone(alert.latitude)
+
+    def test_emergency_alert_create_with_location(self):
+        response = self.client.post(
+            reverse("emergency_alert_create"),
+            data=json.dumps({
+                "severity": "URGENT", "share_location": True, "details": "",
+                "latitude": 1.234567, "longitude": 36.123456,
+            }),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        alert = EmergencyAlert.objects.get(patient=self.patient)
+        self.assertTrue(alert.has_location)
+
+    def test_emergency_alert_create_rejects_invalid_severity(self):
+        response = self.client.post(
+            reverse("emergency_alert_create"),
+            data=json.dumps({"severity": "NOT_A_LEVEL"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(EmergencyAlert.objects.exists())
+
+    def test_reception_can_acknowledge_and_resolve_emergency_alert(self):
+        alert = EmergencyAlert.objects.create(patient=self.patient, severity=EmergencyAlert.Severity.CRITICAL)
+        self.client.logout()
+        self.client.login(username="recep1", password="pass1234")
+
+        response = self.client.post(reverse("emergency_alert_acknowledge", args=[alert.pk]))
+        self.assertRedirects(response, reverse("reception_dashboard"))
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, EmergencyAlert.Status.ACKNOWLEDGED)
+        self.assertEqual(alert.acknowledged_by, self.receptionist)
+
+        response = self.client.post(reverse("emergency_alert_resolve", args=[alert.pk]))
+        self.assertRedirects(response, reverse("reception_dashboard"))
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, EmergencyAlert.Status.RESOLVED)
+
+    def test_patient_can_message_a_doctor_who_treated_them(self):
+        response = self.client.post(reverse("patient_messages"), {
+            "doctor": self.doctor.pk, "body": "Question about my prescription",
+        })
+
+        self.assertRedirects(response, reverse("patient_messages"))
+        message = Message.objects.get(patient=self.patient)
+        self.assertEqual(message.sender, self.patient_user)
+        self.assertEqual(message.doctor, self.doctor)
+        self.assertTrue(
+            Notification.objects.filter(user=self.doctor, title__icontains="New message").exists()
+        )
+
+    def test_patient_cannot_message_a_doctor_who_never_treated_them(self):
+        response = self.client.post(reverse("patient_messages"), {
+            "doctor": self.other_doctor.pk, "body": "Hello",
+        })
+
+        # Invalid form (doctor outside the scoped queryset) re-renders inline,
+        # same convention as appointment_create/telemedicine_start.
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Message.objects.exists())
+
+    def test_patient_message_thread_403_for_doctor_who_never_treated_them(self):
+        response = self.client.get(reverse("patient_message_thread", args=[self.other_doctor.pk]))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_doctor_reply_marks_patient_messages_read_and_notifies_patient(self):
+        Message.objects.create(
+            patient=self.patient, doctor=self.doctor, sender=self.patient_user, body="Hi doctor"
+        )
+        self.client.logout()
+        self.client.login(username="doc1", password="pass1234")
+
+        # GET marks the patient's message as read.
+        self.client.get(reverse("doctor_message_thread", args=[self.patient.pk]))
+        self.assertTrue(Message.objects.get(sender=self.patient_user).is_read)
+
+        response = self.client.post(
+            reverse("doctor_message_thread", args=[self.patient.pk]), {"body": "Take it easy"}
+        )
+
+        self.assertRedirects(response, reverse("doctor_message_thread", args=[self.patient.pk]))
+        reply = Message.objects.get(sender=self.doctor)
+        self.assertEqual(reply.patient, self.patient)
+        self.assertTrue(
+            Notification.objects.filter(user=self.patient_user, title__icontains="New message").exists()
+        )
+
+    def test_doctor_message_thread_403_for_patient_never_treated(self):
+        self.client.logout()
+        self.client.login(username="doc1", password="pass1234")
+
+        response = self.client.get(reverse("doctor_message_thread", args=[self.other_patient.pk]))
+
+        self.assertEqual(response.status_code, 403)

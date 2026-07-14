@@ -1,0 +1,100 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Messages</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
+</head>
+<body>
+	<div style="max-width: 960px; margin: 0 auto; padding: 2rem;">
+		<div class="header">
+			<div class="header-left">
+				<h1>Secure Messages</h1>
+				<p>Message a doctor who has treated you.</p>
+			</div>
+			<a class="btn-sm btn-secondary" href="{% url 'patient_dashboard' %}">
+				<i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Dashboard
+			</a>
+		</div>
+
+		{% if messages %}
+			<div style="margin-bottom: 1.5rem;">
+				{% for message in messages %}
+					<div class="card" style="border-left: 4px solid {% if message.tags == 'error' %}var(--danger){% else %}var(--success){% endif %}; margin-bottom: 0.75rem;">
+						{{ message }}
+					</div>
+				{% endfor %}
+			</div>
+		{% endif %}
+
+		{% if available_doctors %}
+			<div class="card">
+				<div class="card-header">
+					<h2 class="card-title">
+						<div class="card-icon secondary"><i class="fas fa-pen" aria-hidden="true"></i></div>
+						New Message
+					</h2>
+				</div>
+				<form method="post" novalidate>
+					{% csrf_token %}
+					{% for field in form %}
+						<div class="form-group">
+							<label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+							{{ field }}
+							{% if field.errors %}
+								<ul class="errorlist">
+									{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+								</ul>
+							{% endif %}
+						</div>
+					{% endfor %}
+					<button type="submit" class="btn-sm btn-primary">
+						<i class="fas fa-paper-plane" aria-hidden="true"></i> Send
+					</button>
+				</form>
+			</div>
+		{% else %}
+			<div class="card">
+				<p class="text-muted">
+					You don't have any doctors on file yet — once you've had a visit, you'll be able to message that doctor here.
+				</p>
+			</div>
+		{% endif %}
+
+		<div class="card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<div class="card-icon primary"><i class="fas fa-comments" aria-hidden="true"></i></div>
+					Conversations
+				</h2>
+			</div>
+
+			{% for conversation in conversations %}
+				<a class="message-item" href="{% url 'patient_message_thread' conversation.doctor.pk %}">
+					<div class="message-header">
+						<div class="message-from">
+							Dr. {{ conversation.doctor.get_full_name|default:conversation.doctor.username }}
+							{% if conversation.unread %}
+								<span class="status-badge badge-danger">{{ conversation.unread }} new</span>
+							{% endif %}
+						</div>
+						{% if conversation.latest %}
+							<div class="message-time">{{ conversation.latest.created_at|timesince }} ago</div>
+						{% endif %}
+					</div>
+					{% if conversation.latest %}
+						<div class="message-preview">{{ conversation.latest.body|truncatechars:120 }}</div>
+					{% else %}
+						<div class="message-preview text-muted">No messages yet — say hello.</div>
+					{% endif %}
+				</a>
+			{% empty %}
+				<p class="text-muted">No conversations yet.</p>
+			{% endfor %}
+		</div>
+	</div>
+</body>
+</html>

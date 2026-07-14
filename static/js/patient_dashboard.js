@@ -142,7 +142,24 @@ function setEmergencyStatus(message, type) {
     emergencyForm.status.className = `emergency-status ${type}`;
 }
 
+// Resolves to {latitude, longitude} or null — never rejects, so a denied/
+// unavailable permission doesn't block sending the alert itself.
+function getLocation() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(null);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+            () => resolve(null),
+            { timeout: 8000 }
+        );
+    });
+}
+
 async function sendEmergencyAlert() {
+    const alertUrl = document.body.dataset.emergencyAlertUrl;
     const severity = document.querySelector('input[name="severity"]:checked')?.value;
     const shareLocation = document.getElementById('share-location')?.checked ?? false;
     const details = document.getElementById('emergency-details')?.value ?? '';
@@ -155,25 +172,27 @@ async function sendEmergencyAlert() {
     emergencyForm.submitBtn?.setAttribute('disabled', 'true');
     setEmergencyStatus('Sending alert…', '');
 
-    // NOTE: this endpoint is a placeholder. Do not ship this button live
-    // without a real backend route behind it — for a "life-threatening"
-    // option, a fake client-side success message is actively dangerous:
-    // a patient could believe help is on the way when nobody was notified.
-    // If there's no backend for this yet, either hide the "Critical" option
-    // or replace this flow with a real emergency phone number.
+    const location = shareLocation ? await getLocation() : null;
+
     try {
-        const response = await fetch('/api/emergency-alert/', {
+        const response = await fetch(alertUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken(),
             },
-            body: JSON.stringify({ severity, share_location: shareLocation, details }),
+            body: JSON.stringify({
+                severity,
+                share_location: shareLocation,
+                details,
+                latitude: location?.latitude ?? null,
+                longitude: location?.longitude ?? null,
+            }),
         });
 
         if (!response.ok) throw new Error(`Server responded with ${response.status}`);
 
-        setEmergencyStatus('Emergency team notified. Stay on this page.', 'success');
+        setEmergencyStatus('Front desk notified. Stay on this page.', 'success');
         setTimeout(() => closeModal('emergency-modal'), 1500);
     } catch (err) {
         setEmergencyStatus(
@@ -186,3 +205,43 @@ async function sendEmergencyAlert() {
 }
 
 document.getElementById('emergency-submit')?.addEventListener('click', sendEmergencyAlert);
+
+// ---------------------------------------------------------------------
+// Confirm before a destructive POST (e.g. cancelling an appointment) —
+// declarative like the modal wiring above, so no inline onsubmit="" is
+// needed on the form itself.
+// ---------------------------------------------------------------------
+document.querySelectorAll('form[data-confirm]').forEach((form) => {
+    form.addEventListener('submit', (e) => {
+        if (!window.confirm(form.dataset.confirm)) {
+            e.preventDefault();
+        }
+    });
+});
+
+// ---------------------------------------------------------------------
+// Live client-side filtering: search box (upcoming appointments + medical
+// history) and the medical-history department dropdown. Both only hide/show
+// already-rendered rows — no extra request, since everything shown is
+// already the patient's own data.
+// ---------------------------------------------------------------------
+const searchInput = document.getElementById('dashboard-search');
+const departmentFilter = document.getElementById('history-department-filter');
+
+function applyFilters() {
+    const query = (searchInput?.value ?? '').trim().toLowerCase();
+
+    document.querySelectorAll('.appointment-item').forEach((item) => {
+        item.style.display = !query || item.textContent.toLowerCase().includes(query) ? '' : 'none';
+    });
+
+    const department = departmentFilter?.value ?? '';
+    document.querySelectorAll('.timeline-item').forEach((item) => {
+        const matchesQuery = !query || item.textContent.toLowerCase().includes(query);
+        const matchesDepartment = !department || item.dataset.department === department;
+        item.style.display = matchesQuery && matchesDepartment ? '' : 'none';
+    });
+}
+
+searchInput?.addEventListener('input', applyFilters);
+departmentFilter?.addEventListener('change', applyFilters);

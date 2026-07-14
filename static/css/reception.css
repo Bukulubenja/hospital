@@ -152,6 +152,12 @@ a.btn-ghost, button.btn-ghost {
 .badge-cancelled { background: #fbe9e7; color: var(--danger); }
 .badge-no_show { background: #fdf0e0; color: #b9770e; }
 .badge-waiting_doctor { background: #fdf0e0; color: #b9770e; }
+.badge-critical { background: #fbe9e7; color: var(--danger); }
+.badge-urgent { background: #fdf0e0; color: #b9770e; }
+.badge-moderate { background: #fdf6d8; color: #8a7a12; }
+.badge-new { background: #fbe9e7; color: var(--danger); }
+.badge-acknowledged { background: #fdf0e0; color: #b9770e; }
+.badge-resolved { background: #e6f7ec; color: var(--success); }
 .badge-in_consultation { background: #e6f0ff; color: var(--accent); }
 .badge-waiting_lab, .badge-waiting_pharmacy { background: #f1e6fb; color: #6c3fa8; }
 .badge-pending { background: #fdf0e0; color: #b9770e; }

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -8,6 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -20,6 +22,8 @@ from .forms import (
     LabResultForm,
     MedicalRecordForm,
     MeetingLinkForm,
+    MessageComposeForm,
+    MessageReplyForm,
     PatientForm,
     PatientTelemedicineForm,
     PaymentForm,
@@ -33,11 +37,14 @@ from .models import (
     Bed,
     Department,
     Drug,
+    EmergencyAlert,
     InvoiceItem,
     LabOrder,
     LabOrderItem,
     LabResult,
     MedicalRecord,
+    Message,
+    Notification,
     Patient,
     Payment,
     Prescription,
@@ -55,11 +62,13 @@ from .models import (
 from .permissions import can_doctor_access, can_nurse_access
 from .services import (
     approve_refill_request,
+    create_notification,
     days_left_for_prescription_item,
     deny_refill_request,
     dispense_prescription_item,
     lab_order_fully_resulted,
     patient_for_user,
+    queue_snapshot_for_patient,
     refresh_invoice_totals,
     visit_status_after_consultation,
     visit_status_after_lab,
@@ -163,12 +172,16 @@ def reception_dashboard(request):
         .filter(created_at__date=today, served=False)
         .order_by("queue_number")
     )
+    active_emergency_alerts = EmergencyAlert.objects.select_related("patient").exclude(
+        status=EmergencyAlert.Status.RESOLVED
+    )
 
     context = {
         "todays_appointments": todays_appointments,
         "active_queue": active_queue,
         "waiting_count": active_queue.count(),
         "todays_count": todays_appointments.count(),
+        "active_emergency_alerts": active_emergency_alerts,
     }
     return render(request, "dashboards/reception.html", context)
 
@@ -323,6 +336,40 @@ def set_meeting_link(request, pk):
     return redirect("appointment_list")
 
 
+@role_required("RECEPTIONIST")
+def emergency_alert_acknowledge(request, pk):
+    if request.method != "POST":
+        return redirect("reception_dashboard")
+
+    alert = get_object_or_404(EmergencyAlert, pk=pk)
+    if alert.status != EmergencyAlert.Status.NEW:
+        messages.error(request, "This alert was already acknowledged.")
+        return redirect("reception_dashboard")
+
+    alert.status = EmergencyAlert.Status.ACKNOWLEDGED
+    alert.acknowledged_by = request.user
+    alert.acknowledged_at = timezone.now()
+    alert.save(update_fields=["status", "acknowledged_by", "acknowledged_at"])
+    messages.success(request, f"Alert for {alert.patient.full_name} acknowledged.")
+    return redirect("reception_dashboard")
+
+
+@role_required("RECEPTIONIST")
+def emergency_alert_resolve(request, pk):
+    if request.method != "POST":
+        return redirect("reception_dashboard")
+
+    alert = get_object_or_404(EmergencyAlert, pk=pk)
+    if alert.status == EmergencyAlert.Status.RESOLVED:
+        messages.error(request, "This alert is already resolved.")
+        return redirect("reception_dashboard")
+
+    alert.status = EmergencyAlert.Status.RESOLVED
+    alert.save(update_fields=["status"])
+    messages.success(request, f"Alert for {alert.patient.full_name} marked resolved.")
+    return redirect("reception_dashboard")
+
+
 # ---------------------------------------------------------------------
 # Doctor workflow: consult -> vitals -> diagnosis -> prescribe / order labs
 # ---------------------------------------------------------------------
@@ -348,10 +395,14 @@ def doctor_dashboard(request):
         .filter(status=RefillRequest.Status.PENDING, prescription_item__prescription__doctor=request.user)
         .order_by("requested_at")
     )
+    unread_message_count = (
+        Message.objects.filter(doctor=request.user, is_read=False).exclude(sender=request.user).count()
+    )
     context = {
         "waiting_visits": waiting_visits,
         "in_progress_visits": in_progress_visits,
         "pending_refill_requests": pending_refill_requests,
+        "unread_message_count": unread_message_count,
     }
     return render(request, "dashboards/doctor_dashboard.html", context)
 
@@ -543,6 +594,54 @@ def refill_request_deny(request, pk):
     deny_refill_request(refill_request, request.user, reason)
     messages.success(request, f"Refill request for {refill_request.patient.full_name} denied.")
     return redirect("doctor_dashboard")
+
+
+@role_required("DOCTOR")
+def doctor_messages(request):
+    patient_ids = Message.objects.filter(doctor=request.user).values_list("patient_id", flat=True).distinct()
+    patients = Patient.objects.filter(pk__in=patient_ids)
+
+    conversations = []
+    for patient in patients:
+        thread = Message.objects.filter(doctor=request.user, patient=patient).order_by("-created_at")
+        latest = thread.first()
+        unread = thread.filter(is_read=False).exclude(sender=request.user).count()
+        conversations.append({"patient": patient, "latest": latest, "unread": unread})
+    conversations.sort(key=lambda c: c["latest"].created_at, reverse=True)
+
+    return render(request, "dashboards/doctor_messages.html", {"conversations": conversations})
+
+
+@role_required("DOCTOR")
+def doctor_message_thread(request, patient_pk):
+    patient = get_object_or_404(Patient, pk=patient_pk)
+    if not Visit.objects.filter(doctor=request.user, patient=patient).exists():
+        raise PermissionDenied("You can only message patients you have treated.")
+
+    if request.method == "POST":
+        form = MessageReplyForm(request.POST)
+        if form.is_valid():
+            Message.objects.create(
+                patient=patient, doctor=request.user, sender=request.user, body=form.cleaned_data["body"]
+            )
+            create_notification(
+                patient.user,
+                f"New message from Dr. {request.user.get_full_name() or request.user.username}",
+                form.cleaned_data["body"][:200],
+            )
+            messages.success(request, "Message sent.")
+        else:
+            _flash_form_errors(request, form, "Could not send the message.")
+        return redirect("doctor_message_thread", patient_pk=patient.pk)
+
+    thread = Message.objects.filter(doctor=request.user, patient=patient).order_by("created_at")
+    thread.exclude(sender=request.user).filter(is_read=False).update(is_read=True)
+
+    return render(
+        request,
+        "dashboards/doctor_message_thread.html",
+        {"patient": patient, "thread": thread, "form": MessageReplyForm()},
+    )
 
 
 # ---------------------------------------------------------------------
@@ -988,6 +1087,24 @@ def patient_dashboard(request):
     for item in active_prescription_items:
         item.days_left = days_left_for_prescription_item(item)
 
+    notifications_qs = Notification.objects.filter(user=request.user).order_by("-created_at")
+    recent_notifications = list(notifications_qs[:5])
+    unread_notification_count = notifications_qs.filter(is_read=False).count()
+
+    recent_messages = list(
+        Message.objects.filter(patient=patient)
+        .select_related("doctor", "sender")
+        .order_by("-created_at")[:5]
+    )
+    for item in recent_messages:
+        item.sender_name = (
+            "You"
+            if item.sender_id == request.user.id
+            else f"Dr. {item.doctor.get_full_name() or item.doctor.username}"
+        )
+        item.sent_at = item.created_at
+        item.preview = item.body[:120]
+
     context = {
         "patient": patient,
         "last_visit": last_visit,
@@ -1017,8 +1134,154 @@ def patient_dashboard(request):
         "total_pending": total_due,
         "total_due": total_due,
         "recent_invoices": VisitInvoice.objects.filter(patient=patient).order_by("-created_at")[:5],
+        "recent_notifications": recent_notifications,
+        "unread_notification_count": unread_notification_count,
+        "recent_messages": recent_messages,
+        "queue_snapshot": queue_snapshot_for_patient(patient),
     }
     return render(request, "dashboards/patient_dashboard.html", context)
+
+
+@role_required("PATIENT")
+def patient_appointment_cancel(request, pk):
+    if request.method != "POST":
+        return redirect("patient_dashboard")
+
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    appointment = get_object_or_404(Appointment, pk=pk, patient=patient)
+    if appointment.status != Appointment.Status.SCHEDULED:
+        messages.error(request, "Only scheduled appointments can be cancelled.")
+        return redirect("patient_dashboard")
+
+    appointment.status = Appointment.Status.CANCELLED
+    appointment.save(update_fields=["status"])
+    messages.success(request, "Appointment cancelled.")
+    return redirect("patient_dashboard")
+
+
+@role_required("PATIENT")
+def notifications_mark_all_read(request):
+    if request.method != "POST":
+        return redirect("patient_dashboard")
+
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return redirect("patient_dashboard")
+
+
+@role_required("PATIENT")
+def emergency_alert_create(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required."}, status=405)
+
+    patient = patient_for_user(request.user)
+    if patient is None:
+        return JsonResponse(
+            {"error": "Your account isn't linked to a patient record yet."}, status=400
+        )
+
+    try:
+        payload = json.loads(request.body)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Invalid request."}, status=400)
+
+    severity = payload.get("severity")
+    if severity not in EmergencyAlert.Severity.values:
+        return JsonResponse({"error": "Select a valid severity level."}, status=400)
+
+    share_location = bool(payload.get("share_location"))
+    latitude = payload.get("latitude") if share_location else None
+    longitude = payload.get("longitude") if share_location else None
+
+    EmergencyAlert.objects.create(
+        patient=patient,
+        severity=severity,
+        details=(payload.get("details") or "").strip(),
+        latitude=latitude,
+        longitude=longitude,
+    )
+    return JsonResponse({"ok": True})
+
+
+@role_required("PATIENT")
+def patient_messages(request):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    available_doctors = (
+        User.objects.filter(role=User.Role.DOCTOR, visits_as_doctor__patient=patient)
+        .distinct()
+        .order_by("first_name", "last_name")
+    )
+
+    if request.method == "POST":
+        form = MessageComposeForm(request.POST, doctor_queryset=available_doctors)
+        if form.is_valid():
+            doctor = form.cleaned_data["doctor"]
+            Message.objects.create(
+                patient=patient, doctor=doctor, sender=request.user, body=form.cleaned_data["body"]
+            )
+            create_notification(doctor, f"New message from {patient.full_name}", form.cleaned_data["body"][:200])
+            messages.success(request, "Message sent.")
+            return redirect("patient_messages")
+        _flash_form_errors(request, form, "Could not send the message.")
+    else:
+        form = MessageComposeForm(doctor_queryset=available_doctors)
+
+    conversations = []
+    for doctor in available_doctors:
+        thread = Message.objects.filter(patient=patient, doctor=doctor).order_by("-created_at")
+        latest = thread.first()
+        unread = thread.filter(is_read=False).exclude(sender=request.user).count()
+        conversations.append({"doctor": doctor, "latest": latest, "unread": unread})
+
+    context = {
+        "patient": patient,
+        "form": form,
+        "available_doctors": available_doctors,
+        "conversations": conversations,
+    }
+    return render(request, "dashboards/patient_messages.html", context)
+
+
+@role_required("PATIENT")
+def patient_message_thread(request, doctor_pk):
+    patient = patient_for_user(request.user)
+    if patient is None:
+        messages.error(request, "Your account isn't linked to a patient record yet.")
+        return redirect("patient_dashboard")
+
+    doctor = get_object_or_404(User, pk=doctor_pk, role=User.Role.DOCTOR)
+    if not Visit.objects.filter(doctor=doctor, patient=patient).exists():
+        raise PermissionDenied("You can only message a doctor who has treated you.")
+
+    if request.method == "POST":
+        form = MessageReplyForm(request.POST)
+        if form.is_valid():
+            Message.objects.create(
+                patient=patient, doctor=doctor, sender=request.user, body=form.cleaned_data["body"]
+            )
+            create_notification(
+                doctor, f"New message from {patient.full_name}", form.cleaned_data["body"][:200]
+            )
+            messages.success(request, "Message sent.")
+        else:
+            _flash_form_errors(request, form, "Could not send the message.")
+        return redirect("patient_message_thread", doctor_pk=doctor.pk)
+
+    thread = Message.objects.filter(patient=patient, doctor=doctor).order_by("created_at")
+    thread.exclude(sender=request.user).filter(is_read=False).update(is_read=True)
+
+    return render(
+        request,
+        "dashboards/patient_message_thread.html",
+        {"patient": patient, "doctor": doctor, "thread": thread, "form": MessageReplyForm()},
+    )
 
 
 @role_required("PATIENT")

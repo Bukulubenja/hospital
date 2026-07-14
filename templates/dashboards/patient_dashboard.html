@@ -12,7 +12,7 @@
      render-blocking request). -->
 <link rel="stylesheet" href="{% static 'css/patient_dashboard.css' %}">
 </head>
-<body>
+<body data-emergency-alert-url="{% url 'emergency_alert_create' %}">
     <div class="container-main">
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
@@ -213,10 +213,14 @@
                                     </div>
                                 </div>
                                 <div class="appointment-actions">
-                                    <button class="btn-sm btn-primary"
-                                            aria-label="Confirm appointment with {{ appointment.doctor.get_full_name|default:'assigned doctor' }}">
-                                        <i class="fas fa-check" aria-hidden="true"></i>
-                                    </button>
+                                    <form method="post" action="{% url 'patient_appointment_cancel' appointment.pk %}"
+                                          data-confirm="Cancel this appointment?">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn-sm btn-danger"
+                                                aria-label="Cancel appointment with {{ appointment.doctor.get_full_name|default:'assigned doctor' }}">
+                                            <i class="fas fa-times" aria-hidden="true"></i>
+                                        </button>
+                                    </form>
                                 </div>
                             </div>
                         {% empty %}
@@ -350,7 +354,7 @@
 
                     <div class="timeline">
                         {% for record in medical_history %}
-                            <div class="timeline-item">
+                            <div class="timeline-item" data-department="{{ record.visit.department_id|default:'' }}">
                                 <div class="timeline-content">
                                     <div class="timeline-date">{{ record.created_at|date:"F j, Y" }}</div>
                                     <div class="timeline-title">{{ record.visit.get_visit_type_display }}</div>
@@ -400,37 +404,41 @@
                     {% endfor %}
                 </div>
 
-                <!-- Smart Queue Prediction -->
-                <!-- No queue-prediction model/service exists in this project yet;
-                     these numbers are illustrative only until that's built. -->
+                <!-- Queue Status -->
+                <!-- Real position/wait, computed from today's unserved QueueTicket rows
+                     (see queue_snapshot_for_patient in services.py) — not fabricated. -->
                 <div class="card">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon warning">
                                 <i class="fas fa-list" aria-hidden="true"></i>
                             </div>
-                            Smart Queue Prediction
+                            Today's Queue Status
                         </h2>
                     </div>
 
-                    <div class="queue-status">
-                        <div class="queue-item">
-                            <div class="queue-number">{{ queue_ticket.queue_number|default:"—" }}</div>
-                            <div class="queue-label">Current Queue</div>
+                    {% if queue_snapshot %}
+                        <div class="queue-status">
+                            <div class="queue-item">
+                                <div class="queue-number">{{ queue_snapshot.queue_number }}</div>
+                                <div class="queue-label">Your Queue Number</div>
+                            </div>
+                            <div class="queue-item">
+                                <div class="queue-number">{{ queue_snapshot.position }}</div>
+                                <div class="queue-label">Patients Ahead (incl. you)</div>
+                            </div>
+                            <div class="queue-item">
+                                <div class="queue-number">{{ queue_snapshot.estimated_wait_minutes }}m</div>
+                                <div class="queue-label">Est. Wait Time</div>
+                            </div>
+                            <div class="queue-item">
+                                <div class="queue-number">{{ queue_snapshot.estimated_time|date:"H:i" }}</div>
+                                <div class="queue-label">Est. Your Time</div>
+                            </div>
                         </div>
-                        <div class="queue-item">
-                            <div class="queue-number">{{ estimated_wait_minutes|default:"—" }}</div>
-                            <div class="queue-label">Est. Wait Time</div>
-                        </div>
-                        <div class="queue-item">
-                            <div class="queue-number">{{ queue_position|default:"—" }}</div>
-                            <div class="queue-label">Your Position</div>
-                        </div>
-                        <div class="queue-item">
-                            <div class="queue-number">{{ estimated_time|default:"—" }}</div>
-                            <div class="queue-label">Est. Your Time</div>
-                        </div>
-                    </div>
+                    {% else %}
+                        <p class="text-muted">You're not currently checked into a queue.</p>
+                    {% endif %}
                 </div>
 
                 <!-- Billing -->
@@ -504,17 +512,17 @@
                             </div>
                             Secure Messages
                         </h2>
-                        <a href="#" class="card-link">View All</a>
+                        <a href="{% url 'patient_messages' %}" class="card-link">View All</a>
                     </div>
 
                     {% for message in recent_messages %}
-                        <div class="message-item">
+                        <a class="message-item" href="{% url 'patient_message_thread' message.doctor_id %}">
                             <div class="message-header">
                                 <div class="message-from">{{ message.sender_name }}</div>
                                 <div class="message-time">{{ message.sent_at|timesince }} ago</div>
                             </div>
                             <div class="message-preview">{{ message.preview }}</div>
-                        </div>
+                        </a>
                     {% empty %}
                         <p class="text-muted">No messages.</p>
                     {% endfor %}
@@ -530,7 +538,10 @@
                             </div>
                             Notifications
                         </h2>
-                        <button class="btn-sm btn-secondary">Mark All as Read</button>
+                        <form method="post" action="{% url 'notifications_mark_all_read' %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-sm btn-secondary">Mark All as Read</button>
+                        </form>
                     </div>
 
                     {% for notification in recent_notifications %}
@@ -606,21 +617,25 @@
             </div>
 
             <div class="modal-body">
+                <p style="margin-bottom: 0.75rem;">
+                    <strong>If this is life-threatening, call emergency services directly first</strong> —
+                    this alert also notifies our front desk, but staff may not see it immediately.
+                </p>
                 <p style="margin-bottom: 1rem;">Select the severity level of your emergency:</p>
 
                 <div class="form-group" role="radiogroup" aria-label="Emergency severity">
                     <label class="severity-option">
-                        <input type="radio" name="severity" value="critical">
+                        <input type="radio" name="severity" value="CRITICAL">
                         <span style="font-weight: 600;">🔴 Critical</span>
                         <span class="severity-desc">Life-threatening</span>
                     </label>
                     <label class="severity-option">
-                        <input type="radio" name="severity" value="urgent">
+                        <input type="radio" name="severity" value="URGENT">
                         <span style="font-weight: 600;">🟠 Urgent</span>
                         <span class="severity-desc">Severe symptoms</span>
                     </label>
                     <label class="severity-option">
-                        <input type="radio" name="severity" value="moderate">
+                        <input type="radio" name="severity" value="MODERATE">
                         <span style="font-weight: 600;">🟡 Moderate</span>
                         <span class="severity-desc">Needs attention</span>
                     </label>
