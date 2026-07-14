@@ -85,6 +85,7 @@ urlpatterns = [
         name="notifications_mark_all_read",
     ),
     path("patient/emergency-alert/", views.emergency_alert_create, name="emergency_alert_create"),
+    path("patient/settings/change-password/", views.patient_change_password, name="patient_change_password"),
     path("patient/messages/", views.patient_messages, name="patient_messages"),
     path("patient/messages/<int:doctor_pk>/", views.patient_message_thread, name="patient_message_thread"),
     path("lab_result_list/", views.lab_result_list, name="lab_result_list"),

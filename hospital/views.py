@@ -3,8 +3,9 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
@@ -1204,6 +1205,22 @@ def emergency_alert_create(request):
         longitude=longitude,
     )
     return JsonResponse({"ok": True})
+
+
+@role_required("PATIENT")
+def patient_change_password(request):
+    if request.method != "POST":
+        return redirect(f"{reverse('patient_dashboard')}#settings")
+
+    form = PasswordChangeForm(user=request.user, data=request.POST)
+    if form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)  # keep the current session logged in
+        messages.success(request, "Password changed.")
+    else:
+        _flash_form_errors(request, form, "Could not change password.")
+
+    return redirect(f"{reverse('patient_dashboard')}#settings")
 
 
 @role_required("PATIENT")

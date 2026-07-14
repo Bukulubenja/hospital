@@ -1409,3 +1409,33 @@ class PatientWorkflowTests(TestCase):
         response = self.client.get(reverse("doctor_message_thread", args=[self.other_patient.pk]))
 
         self.assertEqual(response.status_code, 403)
+
+    def test_patient_can_change_own_password(self):
+        response = self.client.post(reverse("patient_change_password"), {
+            "old_password": "pass1234",
+            "new_password1": "N3wStrongPass!",
+            "new_password2": "N3wStrongPass!",
+        })
+
+        self.assertRedirects(
+            response, f"{reverse('patient_dashboard')}#settings", fetch_redirect_response=False
+        )
+        self.patient_user.refresh_from_db()
+        self.assertTrue(self.patient_user.check_password("N3wStrongPass!"))
+
+        # Session stays authenticated (update_session_auth_hash) — dashboard still loads.
+        dashboard_response = self.client.get(reverse("patient_dashboard"))
+        self.assertEqual(dashboard_response.status_code, 200)
+
+    def test_patient_change_password_rejects_wrong_current_password(self):
+        response = self.client.post(reverse("patient_change_password"), {
+            "old_password": "wrong-password",
+            "new_password1": "N3wStrongPass!",
+            "new_password2": "N3wStrongPass!",
+        })
+
+        self.assertRedirects(
+            response, f"{reverse('patient_dashboard')}#settings", fetch_redirect_response=False
+        )
+        self.patient_user.refresh_from_db()
+        self.assertTrue(self.patient_user.check_password("pass1234"))

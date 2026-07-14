@@ -88,6 +88,12 @@
                         <span>Settings</span>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="{% url 'logout' %}" class="nav-link">
+                        <i class="fas fa-right-from-bracket" aria-hidden="true"></i>
+                        <span>Log Out</span>
+                    </a>
+                </li>
             </ul>
         </aside>
 
@@ -139,7 +145,7 @@
                 </div>
             {% endif %}
 
-            <section id="dashboard-section">
+            <section id="dashboard">
                 <!-- Patient Overview Card -->
                 <div class="card">
                     <div class="card-header">
@@ -186,7 +192,7 @@
 
                 <div class="dashboard-grid">
                     <!-- Upcoming Appointments -->
-                    <div class="card">
+                    <div class="card" id="appointments">
                         <div class="card-header">
                             <h2 class="card-title">
                                 <div class="card-icon primary">
@@ -296,7 +302,7 @@
                 </div>
 
                 <!-- Lab Results -->
-                <div class="card">
+                <div class="card" id="lab-results">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon primary">
@@ -335,7 +341,7 @@
                 </div>
 
                 <!-- Medical History Timeline -->
-                <div class="card">
+                <div class="card" id="medical-history">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon primary">
@@ -368,7 +374,7 @@
                 </div>
 
                 <!-- Prescriptions -->
-                <div class="card">
+                <div class="card" id="prescriptions">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon success">
@@ -442,7 +448,7 @@
                 </div>
 
                 <!-- Billing -->
-                <div class="card">
+                <div class="card" id="billing">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon primary">
@@ -503,8 +509,7 @@
                 </div>
 
                 <!-- Messages -->
-                <!-- No Message model exists in this project yet — placeholder content. -->
-                <div class="card">
+                <div class="card" id="messages">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon secondary">
@@ -529,7 +534,6 @@
                 </div>
 
                 <!-- Notifications -->
-                <!-- No Notification model exists in this project yet — placeholder content. -->
                 <div class="card">
                     <div class="card-header">
                         <h2 class="card-title">
@@ -560,7 +564,7 @@
                 </div>
 
                 <!-- Telemedicine -->
-                <div class="card">
+                <div class="card" id="telemedicine">
                     <div class="card-header">
                         <h2 class="card-title">
                             <div class="card-icon success">
@@ -589,6 +593,98 @@
                             </a>
                         </div>
                     </div>
+                </div>
+
+                <!-- My Profile -->
+                <div class="card" id="profile">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon secondary">
+                                <i class="fas fa-user-circle" aria-hidden="true"></i>
+                            </div>
+                            My Profile
+                        </h2>
+                    </div>
+
+                    {% if patient %}
+                        <div class="patient-overview">
+                            <div class="info-box">
+                                <div class="info-label">Full Name</div>
+                                <div class="info-value" style="font-size: 1rem;">{{ patient.full_name }}</div>
+                            </div>
+                            <div class="info-box">
+                                <div class="info-label">Gender</div>
+                                <div class="info-value" style="font-size: 1rem;">{{ patient.get_gender_display }}</div>
+                            </div>
+                            <div class="info-box">
+                                <div class="info-label">Date of Birth</div>
+                                <div class="info-value" style="font-size: 1rem;">{{ patient.date_of_birth|date:"M j, Y" }}</div>
+                            </div>
+                            <div class="info-box">
+                                <div class="info-label">Phone</div>
+                                <div class="info-value" style="font-size: 1rem;">{{ patient.phone }}</div>
+                            </div>
+                            <div class="info-box">
+                                <div class="info-label">Address</div>
+                                <div class="info-value" style="font-size: 1rem;">{{ patient.address|default:"—" }}</div>
+                            </div>
+                            <div class="info-box">
+                                <div class="info-label">Emergency Contact</div>
+                                <div class="info-value" style="font-size: 1rem;">
+                                    {{ patient.emergency_contact_name|default:"—" }}
+                                    {% if patient.emergency_contact_phone %}({{ patient.emergency_contact_phone }}){% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-muted">
+                            To update these details, please contact reception — they're the source of record for your patient file.
+                        </p>
+                    {% else %}
+                        <p class="text-muted">Your account isn't linked to a patient record yet.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Settings -->
+                <div class="card" id="settings">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <div class="card-icon secondary">
+                                <i class="fas fa-cog" aria-hidden="true"></i>
+                            </div>
+                            Account Settings
+                        </h2>
+                    </div>
+
+                    <div class="patient-overview" style="margin-bottom: 1.5rem;">
+                        <div class="info-box">
+                            <div class="info-label">Username</div>
+                            <div class="info-value" style="font-size: 1rem;">{{ request.user.username }}</div>
+                        </div>
+                        <div class="info-box">
+                            <div class="info-label">Email</div>
+                            <div class="info-value" style="font-size: 1rem;">{{ request.user.email|default:"—" }}</div>
+                        </div>
+                    </div>
+
+                    <h3 style="font-size: 1rem; margin-bottom: 1rem;">Change Password</h3>
+                    <form method="post" action="{% url 'patient_change_password' %}">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="old_password">Current password</label>
+                            <input type="password" id="old_password" name="old_password" required autocomplete="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="new_password1">New password</label>
+                            <input type="password" id="new_password1" name="new_password1" required autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="new_password2">Confirm new password</label>
+                            <input type="password" id="new_password2" name="new_password2" required autocomplete="new-password">
+                        </div>
+                        <button type="submit" class="btn-sm btn-primary">
+                            <i class="fas fa-key" aria-hidden="true"></i> Change Password
+                        </button>
+                    </form>
                 </div>
             </section>
 

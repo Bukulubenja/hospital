@@ -32,6 +32,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv())
 
 AUTH_USER_MODEL = 'hospital.User'
 
+LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "post_login"
 
 
