@@ -35,6 +35,18 @@ AUTH_USER_MODEL = 'hospital.User'
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "post_login"
 
+# Defaults to printing emails to the console so password reset works out of
+# the box in dev with zero setup. Point EMAIL_BACKEND at
+# 'django.core.mail.backends.smtp.EmailBackend' (and fill in the EMAIL_HOST_*
+# vars below) in .env to actually deliver mail.
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='no-reply@hms.local')
+
 
 # Application definition
 

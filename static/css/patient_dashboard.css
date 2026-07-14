@@ -157,11 +157,69 @@ body.dark-mode .nav-link {
 .main-content {
     margin-left: 280px;
     flex: 1;
+    min-width: 0; /* flex items default to min-width:auto, which refuses to
+                     shrink below content's intrinsic width and blows out
+                     the layout on narrow screens instead of wrapping/scrolling */
     padding: 2rem;
     animation: fadeIn 0.6s ease-out;
 }
 
+/* Hidden by default (desktop); shown only below the 1024px breakpoint,
+   where the sidebar is off-canvas and needs an explicit way to open it. */
+.sidebar-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.35rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    line-height: 1;
+    border-radius: 0.5rem;
+}
+
+body.dark-mode .sidebar-toggle {
+    color: #e0e0e0;
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.sidebar-toggle:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Dims the page behind the off-canvas sidebar; clicking it closes the menu. */
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.sidebar-backdrop.active {
+    display: block;
+}
+
 @media (max-width: 1024px) {
+    .sidebar-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
     .sidebar {
         transform: translateX(-100%);
     }
@@ -201,6 +259,7 @@ body.dark-mode .nav-link {
 
 .header-controls {
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     align-items: center;
 }
@@ -360,6 +419,7 @@ body.dark-mode .icon-btn {
     border: 1px solid transparent;
     animation: slideUp 0.6s ease-out;
     margin-bottom: 1.5rem;
+    overflow-x: auto;
 }
 
 body.dark-mode .card {
@@ -1276,12 +1336,13 @@ body.dark-mode .btn-cancel {
         font-size: 1.5rem;
     }
 
+    /* Sidebar stays off-canvas + toggle-controlled (see the 1024px
+       breakpoint above) all the way down to phone widths — it used to be
+       forced back to always-visible-inline here, which both fought with
+       that toggle and pushed all dashboard content below a full nav list. */
     .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        transform: translateX(0);
-        padding: 1rem;
+        width: 85%;
+        max-width: 320px;
     }
 
     .card {
@@ -1290,5 +1351,16 @@ body.dark-mode .btn-cancel {
 
     .patient-overview {
         grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 420px) {
+    /* .dashboard-grid's minmax(300px, 1fr) floor is wider than the
+       available width on the smallest phones once padding is subtracted —
+       force a single column instead of letting it overflow. */
+    .dashboard-grid,
+    .action-grid,
+    .patient-overview {
+        grid-template-columns: 1fr;
     }
 }

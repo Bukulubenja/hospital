@@ -133,10 +133,14 @@ display:flex;
 align-items:center;
 justify-content:center;
 padding:40px;
+min-width:0; /* grid items default to min-width:auto, which refuses to
+                shrink below content's intrinsic width and overflows the
+                single-column layout on narrow screens instead of wrapping */
 }
 
 .glass{
 width:100%;
+min-width:0;
 max-width:500px;
 padding:50px;
 border-radius:35px;
@@ -196,6 +200,8 @@ margin-right:15px;
 
 .input-group input{
 flex:1;
+min-width:0; /* <input> has a large default intrinsic min-width that
+                otherwise refuses to shrink inside a flex row */
 background:none;
 border:none;
 outline:none;
@@ -217,6 +223,27 @@ font-size:14px;
 .options a{
 color:#00d4ff;
 text-decoration:none;
+}
+
+.alert-message{
+padding:14px 18px;
+border-radius:14px;
+margin-bottom:20px;
+font-size:14px;
+border:1px solid transparent;
+}
+
+.alert-message.error{
+background:rgba(239,71,111,.12);
+border-color:rgba(239,71,111,.4);
+color:#ff8fa8;
+}
+
+.alert-message.success,
+.alert-message.info{
+background:rgba(0,255,149,.1);
+border-color:rgba(0,255,149,.35);
+color:#7dffc4;
 }
 
 .login-btn{
@@ -343,5 +370,36 @@ display:none;
 
 .glass{
 max-width:550px;
+}
+}
+
+@media(max-width:480px){
+
+.login-panel{
+padding:20px;
+}
+
+.glass{
+padding:28px 22px;
+border-radius:24px;
+}
+
+.panel-header h2{
+font-size:1.8rem;
+}
+
+.input-group{
+height:58px;
+padding:0 16px;
+}
+
+.login-btn{
+height:58px;
+}
+
+.options{
+flex-direction:column;
+align-items:flex-start;
+gap:10px;
 }
 }

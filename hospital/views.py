@@ -126,6 +126,10 @@ def login_view(request):
 
         if user is not None:
             login(request, user)
+            if request.POST.get("remember_me"):
+                request.session.set_expiry(1209600)  # persist 2 weeks
+            else:
+                request.session.set_expiry(0)  # expire when the browser closes
             return _redirect_for_role(user)
 
         messages.error(request, "Invalid login details")

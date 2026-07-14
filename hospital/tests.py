@@ -1,6 +1,8 @@
 import json
+import re
 from datetime import timedelta
 
+from django.core import mail
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -1439,3 +1441,60 @@ class PatientWorkflowTests(TestCase):
         )
         self.patient_user.refresh_from_db()
         self.assertTrue(self.patient_user.check_password("pass1234"))
+
+
+class AuthWorkflowTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="authuser", password="pass1234", role=User.Role.DOCTOR, email="authuser@example.com"
+        )
+
+    def test_login_without_remember_me_expires_at_browser_close(self):
+        self.client.post(reverse("login"), {"username": "authuser", "password": "pass1234"})
+
+        self.assertTrue(self.client.session.get_expire_at_browser_close())
+
+    def test_login_with_remember_me_persists_session(self):
+        self.client.post(reverse("login"), {
+            "username": "authuser", "password": "pass1234", "remember_me": "on",
+        })
+
+        self.assertFalse(self.client.session.get_expire_at_browser_close())
+        self.assertEqual(self.client.session.get_expiry_age(), 1209600)
+
+    def test_password_reset_sends_email_and_new_password_works(self):
+        response = self.client.post(reverse("password_reset"), {"email": "authuser@example.com"})
+
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("authuser@example.com", mail.outbox[0].to)
+
+        match = re.search(r"/hospital/reset/(?P<uidb64>[\w-]+)/(?P<token>[\w-]+)/", mail.outbox[0].body)
+        self.assertIsNotNone(match)
+
+        confirm_url = reverse(
+            "password_reset_confirm", kwargs={"uidb64": match.group("uidb64"), "token": match.group("token")}
+        )
+        get_response = self.client.get(confirm_url, follow=True)
+        self.assertTrue(get_response.context["validlink"])
+
+        post_response = self.client.post(get_response.wsgi_request.path, {
+            "new_password1": "BrandNewPass1!", "new_password2": "BrandNewPass1!",
+        })
+        self.assertRedirects(post_response, reverse("password_reset_complete"))
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("BrandNewPass1!"))
+
+    def test_password_reset_for_unknown_email_sends_nothing_but_still_redirects(self):
+        response = self.client.post(reverse("password_reset"), {"email": "nobody@example.com"})
+
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_password_reset_confirm_rejects_invalid_token(self):
+        url = reverse("password_reset_confirm", kwargs={"uidb64": "invalid", "token": "invalid-token"})
+
+        response = self.client.get(url, follow=True)
+
+        self.assertFalse(response.context["validlink"])

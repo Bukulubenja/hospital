@@ -20,12 +20,49 @@ themeToggle.addEventListener('click', () => {
 applyTheme(localStorage.getItem('theme') === 'dark');
 
 // ---------------------------------------------------------------------
+// Mobile sidebar toggle — below the 1024px breakpoint the sidebar is
+// off-canvas (see patient_dashboard.css); this is the only way to open it.
+// ---------------------------------------------------------------------
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+
+function closeSidebar() {
+    sidebar?.classList.remove('active');
+    sidebarBackdrop?.classList.remove('active');
+    sidebarToggle?.setAttribute('aria-expanded', 'false');
+}
+
+function openSidebar() {
+    sidebar?.classList.add('active');
+    sidebarBackdrop?.classList.add('active');
+    sidebarToggle?.setAttribute('aria-expanded', 'true');
+}
+
+sidebarToggle?.addEventListener('click', () => {
+    if (sidebar?.classList.contains('active')) {
+        closeSidebar();
+    } else {
+        openSidebar();
+    }
+});
+
+sidebarBackdrop?.addEventListener('click', closeSidebar);
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebar?.classList.contains('active')) {
+        closeSidebar();
+    }
+});
+
+// ---------------------------------------------------------------------
 // Sidebar navigation active state
 // ---------------------------------------------------------------------
 document.querySelectorAll('.nav-link').forEach((link) => {
     link.addEventListener('click', () => {
         document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('active'));
         link.classList.add('active');
+        closeSidebar();
     });
 });
 

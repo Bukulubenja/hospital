@@ -14,8 +14,10 @@
 </head>
 <body data-emergency-alert-url="{% url 'emergency_alert_create' %}">
     <div class="container-main">
+        <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="logo">
                 <i class="fas fa-heartbeat" aria-hidden="true"></i>
                 MediCare
@@ -102,8 +104,13 @@
             <!-- Header -->
             <div class="header">
                 <div class="header-left">
-                    <h1>Welcome back, {{ request.user.get_full_name|default:request.user.username }}</h1>
-                    <p>Here's your health overview</p>
+                    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">
+                        <i class="fas fa-bars" aria-hidden="true"></i>
+                    </button>
+                    <div class="header-text">
+                        <h1>Welcome back, {{ request.user.get_full_name|default:request.user.username }}</h1>
+                        <p>Here's your health overview</p>
+                    </div>
                 </div>
 
                 <div class="header-controls">
