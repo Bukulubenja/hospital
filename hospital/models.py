@@ -50,6 +50,16 @@ class TenantUserManager(TenantManager, DjangoUserManager):
 
 class User(AbstractUser, TenantModel):
 
+    # Unlike every other TenantModel, hospital is nullable here — a
+    # hospital=None User is a platform-operator account (created via
+    # `createsuperuser`, never through the app), used only to log into
+    # Django's /admin/ on the bare BASE_DOMAIN and provision new Hospital
+    # tenants. Every other model stays required: a Patient/Visit/etc.
+    # without a hospital wouldn't make sense.
+    hospital = models.ForeignKey(
+        "hospital.Hospital", on_delete=models.CASCADE, related_name="+", null=True, blank=True
+    )
+
     # AbstractUser.username is globally unique by default; redeclared here
     # so two different hospitals can each have a "doctor1"/"admin" login —
     # uniqueness is enforced per-hospital instead, via the constraint below.
