@@ -45,7 +45,14 @@ def create_role_profile(sender, instance, created, **kwargs):
     if profile_model is None:
         return
 
-    transaction.on_commit(lambda: profile_model.objects.get_or_create(user=instance))
+    # Passed explicitly rather than relying on the ambient tenant context —
+    # on_commit runs after the User row (and its hospital) is already fixed,
+    # so the profile should always match instance.hospital exactly.
+    transaction.on_commit(
+        lambda: profile_model.objects.get_or_create(
+            user=instance, defaults={"hospital": instance.hospital}
+        )
+    )
 
 
 def _get_or_create_hospital_admins_group():

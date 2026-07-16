@@ -1,7 +1,11 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.validators import MinValueValidator
 from django.db import models
+
+from .tenancy import TenantManager, TenantModel
 
 
 # =====================================================================
@@ -18,10 +22,44 @@ class TimeStampedModel(models.Model):
 
 
 # =====================================================================
+# Tenancy
+# =====================================================================
+
+class Hospital(models.Model):
+    """One row per hospital organization on this deployment — the tenant
+    boundary every other model is scoped to via `TenantModel`."""
+
+    name = models.CharField(max_length=200)
+    subdomain = models.SlugField(max_length=63, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+# =====================================================================
 # Users & Staff
 # =====================================================================
 
-class User(AbstractUser):
+class TenantUserManager(TenantManager, DjangoUserManager):
+    """Combines tenant-scoping with Django's create_user/create_superuser
+    helpers. Those helpers end by calling user.save(), which still hits
+    TenantModel.save()'s auto-populate — no need to override them here."""
+
+
+class User(AbstractUser, TenantModel):
+
+    # AbstractUser.username is globally unique by default; redeclared here
+    # so two different hospitals can each have a "doctor1"/"admin" login —
+    # uniqueness is enforced per-hospital instead, via the constraint below.
+    username = models.CharField(
+        max_length=150,
+        unique=False,
+        help_text="Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.",
+        validators=[UnicodeUsernameValidator()],
+        error_messages={"unique": "A user with that username already exists."},
+    )
 
     class Role(models.TextChoices):
         ADMIN = "ADMIN", "Administrator"
@@ -37,25 +75,33 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PATIENT)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
 
+    objects = TenantUserManager()
+
     class Meta:
         indexes = [models.Index(fields=["role"])]
+        constraints = [
+            models.UniqueConstraint(fields=["hospital", "username"], name="unique_username_per_hospital"),
+        ]
 
     def __str__(self):
         return self.get_full_name() or self.username
 
 
-class Department(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+class Department(TenantModel):
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["hospital", "name"], name="unique_department_name_per_hospital"),
+        ]
 
     def __str__(self):
         return self.name
 
 
-class Doctor(models.Model):
+class Doctor(TenantModel):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="doctor_profile"
     )
@@ -68,7 +114,7 @@ class Doctor(models.Model):
         return self.user.get_full_name() or self.user.username
 
 
-class Nurse(models.Model):
+class Nurse(TenantModel):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="nurse_profile"
     )
@@ -84,7 +130,7 @@ class Nurse(models.Model):
 # Patients, Appointments & Visits
 # =====================================================================
 
-class Patient(models.Model):
+class Patient(TenantModel):
 
     class Gender(models.TextChoices):
         MALE = "M", "Male"
@@ -124,7 +170,7 @@ class Patient(models.Model):
         return f"{self.full_name} ({self.patient_number})"
 
 
-class Appointment(models.Model):
+class Appointment(TenantModel):
 
     class Status(models.TextChoices):
         SCHEDULED = "SCHEDULED", "Scheduled"
@@ -165,7 +211,7 @@ class Appointment(models.Model):
         return f"{self.patient.full_name} - {self.appointment_date:%Y-%m-%d %H:%M}"
 
 
-class Visit(models.Model):
+class Visit(TenantModel):
 
     class Status(models.TextChoices):
         REGISTERED = "REGISTERED", "Registered"
@@ -211,7 +257,7 @@ class Visit(models.Model):
         return f"{self.patient.full_name} - {self.visit_date:%Y-%m-%d %H:%M}"
 
 
-class MedicalRecord(models.Model):
+class MedicalRecord(TenantModel):
     visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name="medical_records")
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="medical_records")
     doctor = models.ForeignKey(
@@ -232,7 +278,7 @@ class MedicalRecord(models.Model):
         return f"Medical Record for {self.patient.full_name} - {self.visit.visit_date:%Y-%m-%d}"
 
 
-class VitalSigns(models.Model):
+class VitalSigns(TenantModel):
     visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name="vital_signs")
 
     temperature = models.DecimalField(max_digits=5, decimal_places=2)
@@ -257,7 +303,7 @@ class VitalSigns(models.Model):
 # Pharmacy
 # =====================================================================
 
-class Drug(models.Model):
+class Drug(TenantModel):
     name = models.CharField(max_length=200)
     category = models.CharField(max_length=100)
     strength = models.CharField(max_length=100)
@@ -271,7 +317,7 @@ class Drug(models.Model):
         return f"{self.name} ({self.strength})"
 
 
-class Prescription(models.Model):
+class Prescription(TenantModel):
     visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name="prescriptions")
     doctor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="prescriptions_written"
@@ -286,7 +332,7 @@ class Prescription(models.Model):
         return f"Prescription for {self.patient.full_name} - {self.created_at:%Y-%m-%d}"
 
 
-class PrescriptionItem(models.Model):
+class PrescriptionItem(TenantModel):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name="items")
     drug = models.ForeignKey(Drug, on_delete=models.PROTECT, related_name="prescription_items")
 
@@ -310,7 +356,7 @@ class PrescriptionItem(models.Model):
         return f"{self.drug.name} for {self.prescription.patient.full_name}"
 
 
-class RefillRequest(models.Model):
+class RefillRequest(TenantModel):
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
@@ -353,7 +399,7 @@ class RefillRequest(models.Model):
         return f"Refill request for {self.prescription_item.drug.name} - {self.get_status_display()}"
 
 
-class Stock(models.Model):
+class Stock(TenantModel):
     drug = models.ForeignKey(Drug, on_delete=models.CASCADE, related_name="stock_entries")
     quantity = models.PositiveIntegerField()
     expiry_date = models.DateField(db_index=True)
@@ -369,7 +415,7 @@ class Stock(models.Model):
         return f"{self.drug.name} - {self.quantity} units (Batch: {self.batch_number})"
 
 
-class StockTransaction(models.Model):
+class StockTransaction(TenantModel):
 
     class TransactionType(models.TextChoices):
         IN = "IN", "Stock In"
@@ -392,7 +438,7 @@ class StockTransaction(models.Model):
 # Laboratory
 # =====================================================================
 
-class LabTest(models.Model):
+class LabTest(TenantModel):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
@@ -404,7 +450,7 @@ class LabTest(models.Model):
         return self.name
 
 
-class LabOrder(models.Model):
+class LabOrder(TenantModel):
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
@@ -426,7 +472,7 @@ class LabOrder(models.Model):
         return f"Lab Order for {self.patient.full_name} - {self.get_status_display()}"
 
 
-class LabOrderItem(models.Model):
+class LabOrderItem(TenantModel):
     lab_order = models.ForeignKey(LabOrder, on_delete=models.CASCADE, related_name="items")
     test = models.ForeignKey(LabTest, on_delete=models.PROTECT, related_name="order_items")
 
@@ -439,7 +485,7 @@ class LabOrderItem(models.Model):
         return f"{self.test.name} for {self.lab_order.patient.full_name}"
 
 
-class LabResult(models.Model):
+class LabResult(TenantModel):
     lab_order = models.ForeignKey(LabOrder, on_delete=models.CASCADE, related_name="results")
     test = models.ForeignKey(LabTest, on_delete=models.PROTECT, related_name="results")
 
@@ -459,7 +505,7 @@ class LabResult(models.Model):
 # Billing
 # =====================================================================
 
-class Service(models.Model):
+class Service(TenantModel):
 
     class ServiceType(models.TextChoices):
         APPOINTMENT = "APPOINTMENT", "Appointment Fee"
@@ -477,7 +523,7 @@ class Service(models.Model):
         return self.name
 
 
-class VisitInvoice(models.Model):
+class VisitInvoice(TenantModel):
 
     class Status(models.TextChoices):
         UNPAID = "UNPAID", "Unpaid"
@@ -506,7 +552,7 @@ class VisitInvoice(models.Model):
         return self.total_amount - self.amount_paid
 
 
-class InvoiceItem(models.Model):
+class InvoiceItem(TenantModel):
     invoice = models.ForeignKey(VisitInvoice, on_delete=models.CASCADE, related_name="items")
     service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name="invoice_items")
 
@@ -521,7 +567,7 @@ class InvoiceItem(models.Model):
         return self.quantity * self.price
 
 
-class Payment(models.Model):
+class Payment(TenantModel):
 
     class PaymentMethod(models.TextChoices):
         CASH = "CASH", "Cash"
@@ -546,7 +592,7 @@ class Payment(models.Model):
 # Queueing & Service Gates
 # =====================================================================
 
-class QueueTicket(models.Model):
+class QueueTicket(TenantModel):
     visit = models.OneToOneField(Visit, on_delete=models.CASCADE, related_name="queue_ticket")
 
     queue_number = models.PositiveIntegerField()
@@ -560,7 +606,7 @@ class QueueTicket(models.Model):
         return f"Queue Ticket {self.queue_number} for {self.visit.patient.full_name}"
 
 
-class ServiceGate(models.Model):
+class ServiceGate(TenantModel):
 
     class GateType(models.TextChoices):
         CONSULTATION = "CONSULTATION", "Consultation"
@@ -586,7 +632,7 @@ class ServiceGate(models.Model):
 # Wards, Beds & Admissions
 # =====================================================================
 
-class Ward(models.Model):
+class Ward(TenantModel):
     name = models.CharField(max_length=100)
     department = models.ForeignKey(
         Department, on_delete=models.SET_NULL, null=True, related_name="wards"
@@ -597,7 +643,7 @@ class Ward(models.Model):
         return self.name
 
 
-class Bed(models.Model):
+class Bed(TenantModel):
     ward = models.ForeignKey(Ward, on_delete=models.CASCADE, related_name="beds")
     bed_number = models.CharField(max_length=20)
     is_occupied = models.BooleanField(default=False)
@@ -611,7 +657,7 @@ class Bed(models.Model):
         return f"Bed {self.bed_number} in {self.ward.name}"
 
 
-class Admission(models.Model):
+class Admission(TenantModel):
 
     class Status(models.TextChoices):
         ADMITTED = "ADMITTED", "Admitted"
@@ -639,7 +685,7 @@ class Admission(models.Model):
 # Audit
 # =====================================================================
 
-class AuditLog(models.Model):
+class AuditLog(TenantModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="audit_logs"
     )
@@ -663,7 +709,7 @@ class AuditLog(models.Model):
 # Patient-facing: emergency alerts, notifications, secure messaging
 # =====================================================================
 
-class EmergencyAlert(models.Model):
+class EmergencyAlert(TenantModel):
 
     class Severity(models.TextChoices):
         CRITICAL = "CRITICAL", "Critical"
@@ -704,7 +750,7 @@ class EmergencyAlert(models.Model):
         return f"{self.get_severity_display()} alert for {self.patient.full_name}"
 
 
-class Notification(models.Model):
+class Notification(TenantModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     title = models.CharField(max_length=200)
     description = models.CharField(max_length=300, blank=True)
@@ -718,7 +764,7 @@ class Notification(models.Model):
         return f"{self.title} -> {self.user.username}"
 
 
-class Message(models.Model):
+class Message(TenantModel):
     """A message in the (patient, doctor) conversation thread — `sender`
     disambiguates direction since either party can post to the same thread."""
 

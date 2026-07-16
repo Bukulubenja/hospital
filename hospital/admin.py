@@ -10,6 +10,7 @@ from .models import (
     Doctor,
     Drug,
     EmergencyAlert,
+    Hospital,
     InvoiceItem,
     LabOrder,
     LabOrderItem,
@@ -35,6 +36,18 @@ from .models import (
     VitalSigns,
     Ward,
 )
+
+
+# =====================================================================
+# Tenancy — platform-operator-only (visited on the bare BASE_DOMAIN, never
+# on a hospital's own subdomain; see hospital/middleware.py and CLAUDE.md)
+# =====================================================================
+
+@admin.register(Hospital)
+class HospitalAdmin(admin.ModelAdmin):
+    list_display = ("name", "subdomain", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "subdomain")
 
 
 # =====================================================================

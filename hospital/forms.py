@@ -3,6 +3,8 @@ from django.utils import timezone
 
 from .models import (
     Appointment,
+    Department,
+    Drug,
     LabResult,
     LabTest,
     MedicalRecord,
@@ -60,7 +62,13 @@ class AppointmentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # ModelForm auto-builds these querysets once at class-definition
+        # (i.e. Django-startup/import) time — before any tenant context
+        # exists — so they'd otherwise stay permanently scoped to whatever
+        # was current then. Reassigning here re-evaluates per-request.
         self.fields["patient"].queryset = Patient.objects.order_by("full_name")
+        self.fields["doctor"].queryset = User.objects.filter(role=User.Role.DOCTOR)
+        self.fields["department"].queryset = Department.objects.all()
 
     def clean_appointment_date(self):
         appointment_date = self.cleaned_data["appointment_date"]
@@ -85,6 +93,9 @@ class PatientTelemedicineForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["doctor"].required = False
+        # Same class-definition-time-queryset issue as AppointmentForm above.
+        self.fields["doctor"].queryset = User.objects.filter(role=User.Role.DOCTOR)
+        self.fields["department"].queryset = Department.objects.all()
 
     def clean_appointment_date(self):
         appointment_date = self.cleaned_data["appointment_date"]
@@ -137,9 +148,18 @@ class PrescriptionItemForm(forms.ModelForm):
             "instructions": forms.Textarea(attrs={"rows": 2}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # See AppointmentForm.__init__ — same class-definition-time issue.
+        self.fields["drug"].queryset = Drug.objects.all()
+
 
 class LabOrderItemForm(forms.Form):
-    test = forms.ModelChoiceField(queryset=LabTest.objects.all())
+    test = forms.ModelChoiceField(queryset=LabTest.objects.none())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["test"].queryset = LabTest.objects.all()
 
 
 class LabResultForm(forms.ModelForm):
@@ -152,8 +172,12 @@ class LabResultForm(forms.ModelForm):
 
 
 class InvoiceItemForm(forms.Form):
-    service = forms.ModelChoiceField(queryset=Service.objects.all())
+    service = forms.ModelChoiceField(queryset=Service.objects.none())
     quantity = forms.IntegerField(min_value=1, initial=1)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["service"].queryset = Service.objects.all()
 
 
 class PaymentForm(forms.ModelForm):

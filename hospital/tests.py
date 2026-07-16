@@ -2,8 +2,9 @@ import json
 import re
 from datetime import timedelta
 
+from django.conf import settings
 from django.core import mail
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -14,6 +15,7 @@ from .models import (
     Department,
     Drug,
     EmergencyAlert,
+    Hospital,
     LabOrder,
     LabOrderItem,
     LabResult,
@@ -36,10 +38,30 @@ from .models import (
     VitalSigns,
     Ward,
 )
+from .tenancy import reset_current_hospital, set_current_hospital
 
 
-class ReceptionWorkflowTests(TestCase):
+class TenantTestCase(TestCase):
+    """
+    Shared base for every workflow TestCase below: creates a Hospital tenant
+    and points self.client at its subdomain (so requests resolve it through
+    the real TenantMiddleware), and also sets the tenancy contextvar
+    directly so ORM calls made outside self.client (setUp fixtures, direct
+    assertions) land in the same tenant without needing hospital=... on
+    every single call.
+    """
+
     def setUp(self):
+        super().setUp()
+        self.hospital = Hospital.objects.create(name="Test Hospital", subdomain="test")
+        self.client = Client(HTTP_HOST=f"test.{settings.BASE_DOMAIN}")
+        token = set_current_hospital(self.hospital)
+        self.addCleanup(reset_current_hospital, token)
+
+
+class ReceptionWorkflowTests(TenantTestCase):
+    def setUp(self):
+        super().setUp()
         self.receptionist = User.objects.create_user(
             username="reception1", password="pass1234", role=User.Role.RECEPTIONIST
         )
@@ -186,8 +208,9 @@ class ReceptionWorkflowTests(TestCase):
         self.assertFalse(Visit.objects.filter(appointment=appointment).exists())
 
 
-class DoctorWorkflowTests(TestCase):
+class DoctorWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.doctor = User.objects.create_user(
             username="doc1", password="pass1234", role=User.Role.DOCTOR
         )
@@ -300,8 +323,9 @@ class DoctorWorkflowTests(TestCase):
         self.assertEqual(self.visit.status, Visit.Status.WAITING_PHARMACY)
 
 
-class PharmacyWorkflowTests(TestCase):
+class PharmacyWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.pharmacist = User.objects.create_user(
             username="pharm1", password="pass1234", role=User.Role.PHARMACIST
         )
@@ -450,8 +474,9 @@ class PharmacyWorkflowTests(TestCase):
         self.assertFalse(self.item.dispensed)
 
 
-class LabWorkflowTests(TestCase):
+class LabWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.lab_tech = User.objects.create_user(
             username="lab1", password="pass1234", role=User.Role.LAB
         )
@@ -579,8 +604,9 @@ class LabWorkflowTests(TestCase):
         )
 
 
-class CashierWorkflowTests(TestCase):
+class CashierWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.cashier = User.objects.create_user(
             username="cash1", password="pass1234", role=User.Role.CASHIER
         )
@@ -710,8 +736,9 @@ class CashierWorkflowTests(TestCase):
         self.assertEqual(invoice.status, VisitInvoice.Status.UNPAID)
 
 
-class NurseWorkflowTests(TestCase):
+class NurseWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.nurse = User.objects.create_user(
             username="nurse1", password="pass1234", role=User.Role.NURSE
         )
@@ -810,8 +837,9 @@ class NurseWorkflowTests(TestCase):
         self.assertNotIn(self.visit.pk, visit_ids)
 
 
-class StockManagerWorkflowTests(TestCase):
+class StockManagerWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.stock_manager = User.objects.create_user(
             username="stock1", password="pass1234", role=User.Role.STOCK_MANAGER
         )
@@ -927,8 +955,9 @@ class StockManagerWorkflowTests(TestCase):
         self.assertEqual(batch.quantity, 5)
 
 
-class AdminDashboardTests(TestCase):
+class AdminDashboardTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.admin_user = User.objects.create_user(
             username="admin1", password="pass1234", role=User.Role.ADMIN
         )
@@ -1037,7 +1066,7 @@ class AdminDashboardTests(TestCase):
         self.assertGreaterEqual(response.context["low_stock_drugs"], 1)
 
 
-class AdminStaffAccessSignalTests(TestCase):
+class AdminStaffAccessSignalTests(TenantTestCase):
     def test_creating_admin_user_grants_staff_and_group_access(self):
         user = User.objects.create_user(
             username="new_admin", password="pass1234", role=User.Role.ADMIN
@@ -1079,8 +1108,9 @@ class AdminStaffAccessSignalTests(TestCase):
         self.assertFalse(user.groups.filter(name="Hospital Admins").exists())
 
 
-class PatientWorkflowTests(TestCase):
+class PatientWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.department = Department.objects.create(name="General Medicine")
         self.doctor = User.objects.create_user(
             username="doc1", password="pass1234", role=User.Role.DOCTOR
@@ -1491,8 +1521,9 @@ class PatientWorkflowTests(TestCase):
         self.assertTrue(self.patient_user.check_password("pass1234"))
 
 
-class AuthWorkflowTests(TestCase):
+class AuthWorkflowTests(TenantTestCase):
     def setUp(self):
+        super().setUp()
         self.user = User.objects.create_user(
             username="authuser", password="pass1234", role=User.Role.DOCTOR, email="authuser@example.com"
         )
@@ -1546,3 +1577,87 @@ class AuthWorkflowTests(TestCase):
         response = self.client.get(url, follow=True)
 
         self.assertFalse(response.context["validlink"])
+
+
+class TenantIsolationTests(TestCase):
+    """
+    Proves the actual thing this SaaS conversion is for: two hospitals'
+    staff, logins, and patient data are fully isolated from each other —
+    distinct from every class above, which only proves each workflow still
+    works *within* a single tenant.
+    """
+
+    def setUp(self):
+        self.hospital_a = Hospital.objects.create(name="Hospital A", subdomain="hospital-a")
+        self.hospital_b = Hospital.objects.create(name="Hospital B", subdomain="hospital-b")
+
+        token = set_current_hospital(self.hospital_a)
+        self.receptionist_a = User.objects.create_user(
+            username="staff1", password="pass-a", role=User.Role.RECEPTIONIST
+        )
+        self.doctor_a = User.objects.create_user(
+            username="doctor1", password="pass-a", role=User.Role.DOCTOR
+        )
+        self.patient_a = Patient.objects.create(
+            full_name="Hospital A Patient", gender="M", date_of_birth="1990-01-01",
+            phone="0700000000", patient_number="P-A-1",
+        )
+        reset_current_hospital(token)
+
+        token = set_current_hospital(self.hospital_b)
+        self.doctor_b = User.objects.create_user(
+            username="doctor1", password="pass-b", role=User.Role.DOCTOR
+        )
+        self.department_b = Department.objects.create(name="General Medicine")
+        self.patient_b = Patient.objects.create(
+            full_name="Hospital B Patient", gender="F", date_of_birth="1991-01-01",
+            phone="0700000001", patient_number="P-B-1",
+        )
+        self.visit_b = Visit.objects.create(
+            patient=self.patient_b, doctor=self.doctor_b, department=self.department_b,
+            visit_type=Visit.VisitType.OPD, status=Visit.Status.WAITING_DOCTOR,
+        )
+        reset_current_hospital(token)
+
+        self.client_a = Client(HTTP_HOST=f"hospital-a.{settings.BASE_DOMAIN}")
+
+    def test_same_username_in_two_hospitals_does_not_collide(self):
+        self.assertNotEqual(self.doctor_a.pk, self.doctor_b.pk)
+        self.assertEqual(self.doctor_a.username, self.doctor_b.username)
+
+    def _login(self, client, username, password):
+        # Client.login() bypasses HTTP/middleware entirely (it calls
+        # authenticate() directly), so it never resolves a tenant — a real
+        # POST through the login view is required to exercise
+        # TenantMiddleware/host-based resolution honestly here.
+        return client.post(reverse("login"), {"username": username, "password": password})
+
+    def test_login_authenticates_against_the_right_hospital_only(self):
+        self._login(self.client_a, "doctor1", "pass-a")
+        self.assertEqual(self.client_a.session.get("_auth_user_id"), str(self.doctor_a.pk))
+        self.client_a.logout()
+
+        # Same username exists in Hospital B, but its password must not work
+        # on Hospital A's subdomain — the two accounts are entirely distinct.
+        self._login(self.client_a, "doctor1", "pass-b")
+        self.assertNotIn("_auth_user_id", self.client_a.session)
+
+    def test_cross_hospital_visit_is_404_not_403(self):
+        self._login(self.client_a, "doctor1", "pass-a")
+
+        # visit_b belongs to Hospital B. From Hospital A's subdomain it must
+        # be invisible (404), not merely forbidden (403) — TenantManager
+        # scopes the get_object_or_404 lookup itself, before the view's own
+        # doctor-ownership check ever runs.
+        response = self.client_a.get(reverse("visit_detail", args=[self.visit_b.pk]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patient_list_never_surfaces_another_hospitals_patients(self):
+        self._login(self.client_a, "staff1", "pass-a")
+
+        response = self.client_a.get(reverse("patient_list"))
+
+        names = [p.full_name for p in response.context["patients"]]
+        self.assertIn("Hospital A Patient", names)
+        self.assertNotIn("Hospital B Patient", names)

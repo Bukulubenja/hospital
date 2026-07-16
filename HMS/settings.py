@@ -30,6 +30,13 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv())
 
+# Multi-tenant routing: each hospital is a subdomain of BASE_DOMAIN
+# (stjohns.<BASE_DOMAIN>, mercy.<BASE_DOMAIN>, ...), resolved per-request by
+# hospital.middleware.TenantMiddleware. Include a leading-dot wildcard entry
+# in ALLOWED_HOSTS (e.g. '.hms.example.com') so every subdomain passes
+# Django's host check — see .env.example.
+BASE_DOMAIN = config('BASE_DOMAIN', default='localhost:8000')
+
 # Off by default so local HTTP dev keeps working. Set these to True (and
 # SECURE_HSTS_SECONDS to a real value, e.g. 31536000) in .env once the site
 # is served over HTTPS in production — see .env.example.
@@ -41,6 +48,14 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', defaul
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
 
 AUTH_USER_MODEL = 'hospital.User'
+
+# Django's auth.E003 check only recognizes global uniqueness or a single-
+# field UniqueConstraint on USERNAME_FIELD — it can't see that
+# TenantManager already scopes every User.objects.get(username=...) lookup
+# to the current hospital before the composite (hospital, username)
+# UniqueConstraint even matters. Two hospitals can safely share a username;
+# ModelBackend never sees more than one hospital's rows in a single query.
+SILENCED_SYSTEM_CHECKS = ['auth.E003']
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "post_login"
@@ -77,6 +92,9 @@ AUTHENTICATION_BACKENDS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Resolves request.hospital from the subdomain — must run before any
+    # session/auth/ORM access, since those need to already be tenant-scoped.
+    'hospital.middleware.TenantMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

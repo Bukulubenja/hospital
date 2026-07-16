@@ -1,0 +1,33 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Hospital Not Found - Hospital Management System</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+</head>
+<body>
+
+<div class="background"></div>
+
+<section class="login-container" style="grid-template-columns: 1fr;">
+    <div class="login-panel">
+        <div class="glass">
+            <div class="panel-header">
+                <h2>Hospital Not Found</h2>
+                <p>
+                    We couldn't find a hospital at this address. Double-check the link your
+                    hospital gave you, or contact them directly if you think this is a mistake.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+</body>
+</html>

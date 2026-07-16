@@ -27,7 +27,12 @@ jobs:
     env:
       SECRET_KEY: django-ci-test-secret-key-0123456789-abcdefghijklmnopqrstuvwxyz-not-for-prod
       DEBUG: "False"
-      ALLOWED_HOSTS: localhost,127.0.0.1
+      # Wildcard needed so TenantTestCase's per-test subdomain Host headers
+      # (test.<BASE_DOMAIN>, hospital-a.<BASE_DOMAIN>, ...) pass Django's
+      # ALLOWED_HOSTS check — see hospital/tests.py and CLAUDE.md's
+      # Multi-tenancy section.
+      BASE_DOMAIN: ci.example.com
+      ALLOWED_HOSTS: .ci.example.com,localhost,127.0.0.1
       DB_NAME: HMS
       DB_USER: postgres
       DB_PASSWORD: postgres
