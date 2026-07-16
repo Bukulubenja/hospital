@@ -70,6 +70,7 @@ from .services import (
     lab_order_fully_resulted,
     patient_for_user,
     queue_snapshot_for_patient,
+    record_audit_log,
     refresh_invoice_totals,
     visit_status_after_consultation,
     visit_status_after_lab,
@@ -84,6 +85,15 @@ def _flash_form_errors(request, form, fallback="Could not save — check the val
         messages.error(request, error)
     if not errors:
         messages.error(request, fallback)
+
+
+def _client_ip(request):
+    """Best-effort client IP for AuditLog rows — the leftmost X-Forwarded-For
+    entry if behind a proxy, else REMOTE_ADDR."""
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
 
 
 # Single source of truth for where each role lands after login.
@@ -355,6 +365,7 @@ def emergency_alert_acknowledge(request, pk):
     alert.acknowledged_by = request.user
     alert.acknowledged_at = timezone.now()
     alert.save(update_fields=["status", "acknowledged_by", "acknowledged_at"])
+    record_audit_log(request.user, "ACKNOWLEDGE_EMERGENCY_ALERT", alert, ip_address=_client_ip(request))
     messages.success(request, f"Alert for {alert.patient.full_name} acknowledged.")
     return redirect("reception_dashboard")
 
@@ -371,6 +382,7 @@ def emergency_alert_resolve(request, pk):
 
     alert.status = EmergencyAlert.Status.RESOLVED
     alert.save(update_fields=["status"])
+    record_audit_log(request.user, "RESOLVE_EMERGENCY_ALERT", alert, ip_address=_client_ip(request))
     messages.success(request, f"Alert for {alert.patient.full_name} marked resolved.")
     return redirect("reception_dashboard")
 
@@ -485,6 +497,7 @@ def visit_record_diagnosis(request, pk):
             record.save()
             visit.diagnosis_summary = record.diagnosis
             visit.save(update_fields=["diagnosis_summary"])
+            record_audit_log(request.user, "RECORD_DIAGNOSIS", record, ip_address=_client_ip(request))
             messages.success(request, "Diagnosis recorded.")
         else:
             messages.error(request, "Could not save diagnosis — check the values entered.")
@@ -572,6 +585,7 @@ def refill_request_approve(request, pk):
         return redirect("doctor_dashboard")
 
     approve_refill_request(refill_request, request.user)
+    record_audit_log(request.user, "APPROVE_REFILL_REQUEST", refill_request, ip_address=_client_ip(request))
     messages.success(
         request,
         f"Refill approved for {refill_request.patient.full_name} — sent to pharmacy.",
@@ -597,6 +611,7 @@ def refill_request_deny(request, pk):
         return redirect("doctor_dashboard")
 
     deny_refill_request(refill_request, request.user, reason)
+    record_audit_log(request.user, "DENY_REFILL_REQUEST", refill_request, ip_address=_client_ip(request))
     messages.success(request, f"Refill request for {refill_request.patient.full_name} denied.")
     return redirect("doctor_dashboard")
 
@@ -706,6 +721,7 @@ def dispense_item(request, pk, item_pk):
         return redirect("prescription_detail", pk=pk)
 
     if dispense_prescription_item(item, request.user):
+        record_audit_log(request.user, "DISPENSE_PRESCRIPTION_ITEM", item, ip_address=_client_ip(request))
         messages.success(request, f"Dispensed {item.drug.name} x{item.quantity}.")
         if not item.prescription.items.filter(dispensed=False).exists():
             visit.status = Visit.Status.COMPLETED
@@ -786,6 +802,7 @@ def record_lab_result(request, pk, item_pk):
         result.lab_order = lab_order
         result.test = item.test
         result.save()
+        record_audit_log(request.user, "RECORD_LAB_RESULT", result, ip_address=_client_ip(request))
 
         if lab_order.status == LabOrder.Status.PENDING:
             lab_order.status = LabOrder.Status.PROCESSING
@@ -891,6 +908,7 @@ def record_payment(request, pk):
         payment.save()
         payment.receipt_number = f"RCPT-{payment.pk:06d}"
         payment.save(update_fields=["receipt_number"])
+        record_audit_log(request.user, "RECORD_PAYMENT", payment, ip_address=_client_ip(request))
         refresh_invoice_totals(invoice)
 
     messages.success(

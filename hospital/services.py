@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
+    AuditLog,
     LabResult,
     Notification,
     Prescription,
@@ -39,6 +40,22 @@ def create_notification(user, title, description=""):
     if user is None:
         return None
     return Notification.objects.create(user=user, title=title, description=description)
+
+
+def record_audit_log(user, action, instance, ip_address=None):
+    """
+    Write an AuditLog entry for a mutation on `instance` (any saved model
+    instance). Takes plain scalars rather than a request, so callers in
+    views.py extract `ip_address` themselves — keeps this layer free of
+    HTTP objects, consistent with the rest of services.py.
+    """
+    return AuditLog.objects.create(
+        user=user,
+        action=action,
+        table_name=instance._meta.db_table,
+        record_id=instance.pk,
+        ip_address=ip_address,
+    )
 
 
 def queue_snapshot_for_patient(patient):

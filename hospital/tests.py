@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from .models import (
     Appointment,
+    AuditLog,
     Bed,
     Department,
     Drug,
@@ -247,6 +248,13 @@ class DoctorWorkflowTests(TestCase):
         self.assertEqual(MedicalRecord.objects.filter(visit=self.visit).count(), 1)
         self.visit.refresh_from_db()
         self.assertEqual(self.visit.diagnosis_summary, "Suspected infection")
+        record = MedicalRecord.objects.get(visit=self.visit)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.doctor, action="RECORD_DIAGNOSIS",
+                table_name=record._meta.db_table, record_id=record.pk,
+            ).exists()
+        )
 
         self.client.post(reverse("visit_add_prescription_item", args=[self.visit.pk]), {
             "drug": self.drug.pk, "quantity": "15", "dosage": "1 tablet", "frequency": "3x daily",
@@ -358,6 +366,12 @@ class PharmacyWorkflowTests(TestCase):
                 drug=self.drug, type=StockTransaction.TransactionType.OUT
             ).count(),
             1,
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.pharmacist, action="DISPENSE_PRESCRIPTION_ITEM",
+                table_name=self.item._meta.db_table, record_id=self.item.pk,
+            ).exists()
         )
 
     def test_insufficient_stock_rejects_dispense(self):
@@ -489,8 +503,12 @@ class LabWorkflowTests(TestCase):
         self.visit.refresh_from_db()
         self.assertEqual(self.lab_order.status, LabOrder.Status.PROCESSING)
         self.assertEqual(self.visit.status, Visit.Status.WAITING_LAB)
+        result = LabResult.objects.get(lab_order=self.lab_order, test=self.test_a)
         self.assertTrue(
-            LabResult.objects.filter(lab_order=self.lab_order, test=self.test_a).exists()
+            AuditLog.objects.filter(
+                user=self.lab_tech, action="RECORD_LAB_RESULT",
+                table_name=result._meta.db_table, record_id=result.pk,
+            ).exists()
         )
 
     def test_all_results_recorded_completes_order_and_routes_visit_to_completed(self):
@@ -629,6 +647,12 @@ class CashierWorkflowTests(TestCase):
         self.assertEqual(invoice.balance_due, 60)
         payment = Payment.objects.get(invoice=invoice)
         self.assertTrue(payment.receipt_number.startswith("RCPT-"))
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.cashier, action="RECORD_PAYMENT",
+                table_name=payment._meta.db_table, record_id=payment.pk,
+            ).exists()
+        )
 
     def test_full_payment_marks_paid(self):
         self.client.post(reverse("add_invoice_item", args=[self.visit.pk]), {
@@ -1214,6 +1238,12 @@ class PatientWorkflowTests(TestCase):
         self.assertIsNotNone(new_item)
         new_visit = new_item.prescription.visit
         self.assertEqual(new_visit.status, Visit.Status.WAITING_PHARMACY)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.doctor, action="APPROVE_REFILL_REQUEST",
+                table_name=refill_request._meta.db_table, record_id=refill_request.pk,
+            ).exists()
+        )
 
         pharmacist = User.objects.create_user(
             username="pharm1", password="pass1234", role=User.Role.PHARMACIST
@@ -1242,6 +1272,12 @@ class PatientWorkflowTests(TestCase):
         refill_request.refresh_from_db()
         self.assertEqual(refill_request.status, RefillRequest.Status.DENIED)
         self.assertEqual(refill_request.denial_reason, "Needs a checkup first")
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.doctor, action="DENY_REFILL_REQUEST",
+                table_name=refill_request._meta.db_table, record_id=refill_request.pk,
+            ).exists()
+        )
 
     def test_doctor_who_did_not_prescribe_denied_on_approve(self):
         refill_request = RefillRequest.objects.create(
@@ -1348,11 +1384,23 @@ class PatientWorkflowTests(TestCase):
         alert.refresh_from_db()
         self.assertEqual(alert.status, EmergencyAlert.Status.ACKNOWLEDGED)
         self.assertEqual(alert.acknowledged_by, self.receptionist)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.receptionist, action="ACKNOWLEDGE_EMERGENCY_ALERT",
+                table_name=alert._meta.db_table, record_id=alert.pk,
+            ).exists()
+        )
 
         response = self.client.post(reverse("emergency_alert_resolve", args=[alert.pk]))
         self.assertRedirects(response, reverse("reception_dashboard"))
         alert.refresh_from_db()
         self.assertEqual(alert.status, EmergencyAlert.Status.RESOLVED)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                user=self.receptionist, action="RESOLVE_EMERGENCY_ALERT",
+                table_name=alert._meta.db_table, record_id=alert.pk,
+            ).exists()
+        )
 
     def test_patient_can_message_a_doctor_who_treated_them(self):
         response = self.client.post(reverse("patient_messages"), {
