@@ -23,3 +23,24 @@ db.sqlite3
 .idea/
 .DS_Store
 Thumbs.db
+
+# Node (desktop-app, mobile-app)
+node_modules/
+dist/
+*.exe
+# These need the **/ prefix, not just a trailing slash — a bare
+# "android/app/build/" is anchored to the repo root (a slash in the
+# middle of a gitignore pattern anchors it) and silently misses
+# mobile-app/android/app/build/, letting Gradle/CMake caches slip in.
+**/android/build/
+**/android/app/build/
+**/android/.gradle/
+**/android/app/.cxx/
+**/ios/build/
+**/ios/Pods/
+
+# Unexplained directory that has appeared inside mobile-app/ during
+# development — looks like some background tool on this machine mirroring
+# build artifacts, not anything this project created. Never intentionally
+# add; see CLAUDE.md's Windows Android build notes for context.
+mobile-app/Explorer/

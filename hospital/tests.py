@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core import mail
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1661,3 +1661,40 @@ class TenantIsolationTests(TestCase):
         names = [p.full_name for p in response.context["patients"]]
         self.assertIn("Hospital A Patient", names)
         self.assertNotIn("Hospital B Patient", names)
+
+
+class TenantHeaderFallbackTests(TestCase):
+    """
+    X-Hospital-Subdomain (hospital/middleware.py) exists only so mobile
+    emulators/devices — which can't reach the dev machine via a real
+    *.BASE_DOMAIN subdomain — can still pick a tenant locally. It's gated
+    on settings.DEBUG specifically so it can never activate in a real
+    deployment; these tests lock in both halves of that guarantee.
+    """
+
+    def setUp(self):
+        self.hospital = Hospital.objects.create(name="Header Hospital", subdomain="headerh")
+        # A bare host that doesn't match any subdomain of BASE_DOMAIN —
+        # simulates an emulator hitting the dev machine's LAN IP directly.
+        self.client_bare = Client(HTTP_HOST="127.0.0.1:8000")
+
+    @override_settings(DEBUG=True)
+    def test_header_resolves_tenant_when_debug_true(self):
+        response = self.client_bare.get(
+            reverse("login"), HTTP_X_HOSPITAL_SUBDOMAIN="headerh"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.wsgi_request.hospital, self.hospital)
+
+    @override_settings(DEBUG=False)
+    def test_header_is_ignored_when_debug_false(self):
+        response = self.client_bare.get(
+            reverse("login"), HTTP_X_HOSPITAL_SUBDOMAIN="headerh"
+        )
+
+        # Host doesn't match a subdomain and the header must be completely
+        # inert outside DEBUG — this is the platform (no-tenant) path, not
+        # the header's hospital.
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.wsgi_request.hospital)

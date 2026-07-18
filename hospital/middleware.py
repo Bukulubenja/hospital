@@ -26,6 +26,16 @@ class TenantMiddleware:
         subdomain = None
         if host.endswith("." + base):
             subdomain = host[: -(len(base) + 1)]
+        elif settings.DEBUG:
+            # DEBUG-only fallback for mobile emulators/devices that can't
+            # reach the dev machine via a real subdomain (127.0.0.1/*.lvh.me
+            # resolves to the device itself, not the developer's machine).
+            # Gated on DEBUG specifically so this can never activate in a
+            # real deployment even if left in place by mistake — an
+            # ungated version of this would let any client pick an
+            # arbitrary tenant via a header alone, which is a materially
+            # weaker boundary than requiring a real subdomain/Host match.
+            subdomain = request.META.get("HTTP_X_HOSPITAL_SUBDOMAIN") or None
 
         hospital = None
         if subdomain:

@@ -1,0 +1,32 @@
+{
+  "name": "hms-staff-desktop",
+  "version": "1.0.0",
+  "description": "HMS staff desktop app — wraps the hospital web dashboard in a native window",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.hms.staffdesktop",
+    "productName": "HMS Staff",
+    "files": [
+      "main.js",
+      "preload.js",
+      "setup.html",
+      "setup.js"
+    ],
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
