@@ -48,6 +48,27 @@ SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=0, cast=int)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False, cast=bool)
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
 
+# Railway (and most PaaS hosts) terminate TLS at an edge proxy and forward
+# plain HTTP internally, adding X-Forwarded-Proto to say the original
+# request was HTTPS. Without this, request.is_secure() reports False even
+# though the browser used HTTPS, which breaks Django's CSRF Origin check —
+# it computes the expected origin as http://<host> while the browser's
+# real Origin header is https://<host>, a mismatch that surfaces as "CSRF
+# verification failed" on every POST once deployed behind such a proxy.
+# Safe locally too: runserver never sends this header, so is_secure() is
+# unaffected there.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Belt-and-braces alongside SECURE_PROXY_SSL_HEADER above (Django's own
+# docs recommend both for proxied deployments). Wildcard covers every
+# hospital subdomain of BASE_DOMAIN, matching the subdomain routing model.
+# Harmless locally — BASE_DOMAIN's http origin there never needs this list.
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default=f'https://{BASE_DOMAIN},https://*.{BASE_DOMAIN}',
+    cast=Csv(),
+)
+
 AUTH_USER_MODEL = 'hospital.User'
 
 # Django's auth.E003 check only recognizes global uniqueness or a single-
