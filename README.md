@@ -108,6 +108,10 @@ npx react-native run-android    # or run-ios
 
 The app asks for a hospital server address and subdomain on first launch. For local development against a USB-connected Android device, use `adb reverse tcp:8000 tcp:8000` to tunnel the device's `localhost` to your dev machine instead of configuring LAN IPs. See [CLAUDE.md § Mobile/desktop clients](./CLAUDE.md#mobiledesktop-clients) for the Windows-specific Android build fixes already applied in this repo (NDK/CMake pins, New Architecture) — don't "clean these up" without reading why they're there first.
 
+## Deployment
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for a step-by-step guide to hosting the web app (and `/api/`) on Railway, including the tradeoffs of deploying without a custom domain yet (subdomain-based multi-tenancy needs one — see that doc for why and how to add it later).
+
 ## Security & CI
 
 - Production TLS settings (HSTS, secure cookies, SSL redirect) are environment-driven and off by default so local HTTP development isn't affected — see `.env.example`.

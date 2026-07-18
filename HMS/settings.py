@@ -111,6 +111,10 @@ AUTHENTICATION_BACKENDS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Serves collected static files directly from the app process — no
+    # separate static host/CDN needed. Safe to run in local dev too (DEBUG
+    # or not); it only intercepts STATIC_URL paths.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     # Resolves request.hospital from the subdomain — must run before any
     # session/auth/ORM access, since those need to already be tenant-scoped.
     'hospital.middleware.TenantMiddleware',
@@ -199,5 +203,22 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    # The manifest storage requires a manifest built by `collectstatic`,
+    # which only ever runs as part of a real deploy — falling back to it
+    # locally/in tests (no manifest on disk) raises "Missing staticfiles
+    # manifest entry" the moment any template resolves a {% static %} tag.
+    'staticfiles': {
+        'BACKEND': (
+            'whitenoise.storage.CompressedManifestStaticFilesStorage'
+            if not DEBUG
+            else 'django.contrib.staticfiles.storage.StaticFilesStorage'
+        ),
+    },
+}
 
 

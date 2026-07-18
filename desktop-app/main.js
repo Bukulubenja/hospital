@@ -45,11 +45,14 @@ function buildMenu(baseUrl) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+const iconPath = path.join(__dirname, "assets", "icon.png");
+
 function createMainWindow(baseUrl) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     title: "HMS Staff",
+    icon: iconPath,
     webPreferences: {
       contextIsolation: true,
     },
@@ -64,6 +67,7 @@ function createSetupWindow() {
     height: 340,
     resizable: false,
     title: "HMS Staff — Setup",
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
