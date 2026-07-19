@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, Text } from 'react-native';
 
 import { getInvoices } from '../api/endpoints';
-import { Card, EmptyState, LoadingView, Screen } from '../components/ui';
+import { Card, EmptyState, LoadingView, Screen, StatusBadge } from '../components/ui';
 import { errorMessage, useApi } from '../hooks/useApi';
 import { colors, spacing } from '../theme';
 
@@ -31,11 +31,12 @@ export default function InvoicesScreen() {
           data!.map((invoice) => (
             <Card key={invoice.id}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>
-                Invoice #{invoice.id} — {invoice.status}
+                Invoice #{invoice.id}
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                 {new Date(invoice.created_at).toLocaleDateString()}
               </Text>
+              <StatusBadge status={invoice.status} />
               {invoice.items.map((item) => (
                 <Text key={item.id} style={{ color: colors.textMuted, fontSize: 13 }}>
                   {item.service_name} x{item.quantity} — {item.subtotal}

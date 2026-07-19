@@ -1,6 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
+import { Text } from 'react-native';
 
 import { colors } from '../theme';
 import AppointmentsScreen from '../screens/AppointmentsScreen';
@@ -40,6 +41,25 @@ export type MainStackParamList = {
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
+// Plain-text/emoji glyphs rather than an icon font library (e.g.
+// react-native-vector-icons) — a font-linking native module reintroduces
+// the same class of Windows build pain (native codegen, MAX_PATH issues)
+// that got react-native-gesture-handler removed from this project. No
+// tabBarIcon was ever set here before, which is why the tab bar showed
+// react-navigation's default fallback glyph instead of anything meaningful.
+const TAB_ICONS: Record<keyof TabParamList, string> = {
+  Dashboard: '\u{1F3E0}',
+  Appointments: '\u{1F4C5}',
+  Messages: '\u{1F4AC}',
+  More: '\u{2630}',
+};
+
+function tabIcon(route: keyof TabParamList) {
+  return ({ color }: { color: string }) => (
+    <Text style={{ fontSize: 20, color }}>{TAB_ICONS[route]}</Text>
+  );
+}
+
 const screenOptions = {
   headerStyle: { backgroundColor: colors.surface },
   headerTintColor: colors.text,
@@ -56,10 +76,22 @@ function Tabs() {
         tabBarInactiveTintColor: colors.textMuted,
       }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Appointments" component={AppointmentsScreen} />
-      <Tab.Screen name="Messages" component={MessagesScreen} />
-      <Tab.Screen name="More" component={MoreScreen} />
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ tabBarIcon: tabIcon('Dashboard') }}
+      />
+      <Tab.Screen
+        name="Appointments"
+        component={AppointmentsScreen}
+        options={{ tabBarIcon: tabIcon('Appointments') }}
+      />
+      <Tab.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{ tabBarIcon: tabIcon('Messages') }}
+      />
+      <Tab.Screen name="More" component={MoreScreen} options={{ tabBarIcon: tabIcon('More') }} />
     </Tab.Navigator>
   );
 }

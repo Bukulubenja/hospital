@@ -14,6 +14,7 @@ import {
   Screen,
   SecondaryButton,
   SectionTitle,
+  StatusBadge,
 } from '../components/ui';
 import { ApiError } from '../context/AuthContext';
 import { errorMessage, useApi } from '../hooks/useApi';
@@ -124,7 +125,7 @@ export default function AppointmentsScreen() {
               <Text style={styles.cardTitle}>{appt.doctor ? appt.doctor.name : 'Doctor to be assigned'}</Text>
               <Text style={styles.muted}>{appt.department_name}</Text>
               <Text style={styles.muted}>{new Date(appt.appointment_date).toLocaleString()}</Text>
-              <Text style={styles.muted}>{appt.status}</Text>
+              <StatusBadge status={appt.status} />
               {appt.status === 'SCHEDULED' && (
                 <SecondaryButton title="Cancel appointment" onPress={() => handleCancel(appt.id)} />
               )}

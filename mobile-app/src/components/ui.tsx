@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, spacing } from '../theme';
+import { colors, spacing, statusColor } from '../theme';
 
 export function Screen({ children }: { children: React.ReactNode }) {
   return <View style={styles.screen}>{children}</View>;
@@ -86,6 +86,15 @@ export function SectionTitle({ title }: { title: string }) {
   return <Text style={styles.sectionTitle}>{title}</Text>;
 }
 
+export function StatusBadge({ status }: { status: string }) {
+  const color = statusColor(status);
+  return (
+    <View style={[styles.badge, { backgroundColor: color + '26', borderColor: color }]}>
+      <Text style={[styles.badgeText, { color }]}>{status.replace(/_/g, ' ')}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -158,5 +167,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: spacing.sm,
     marginTop: spacing.md,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginTop: spacing.xs,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
 });

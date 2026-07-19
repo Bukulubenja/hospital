@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, Text } from 'react-native';
 
 import { getRecords } from '../api/endpoints';
-import { Card, EmptyState, LoadingView, Screen, SectionTitle } from '../components/ui';
+import { Card, EmptyState, LoadingView, Screen, SectionTitle, StatusBadge } from '../components/ui';
 import { errorMessage, useApi } from '../hooks/useApi';
 import { colors, spacing } from '../theme';
 
@@ -51,8 +51,9 @@ export default function RecordsScreen() {
                 {v.doctor ? v.doctor.name : 'Unassigned'}
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                {v.department_name} · {new Date(v.visit_date).toLocaleDateString()} · {v.status}
+                {v.department_name} · {new Date(v.visit_date).toLocaleDateString()}
               </Text>
+              <StatusBadge status={v.status} />
               {v.diagnosis_summary ? (
                 <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>{v.diagnosis_summary}</Text>
               ) : null}
@@ -99,8 +100,9 @@ export default function RecordsScreen() {
           data!.lab_orders.map((order) => (
             <Card key={order.id}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>
-                {new Date(order.created_at).toLocaleDateString()} — {order.status}
+                {new Date(order.created_at).toLocaleDateString()}
               </Text>
+              <StatusBadge status={order.status} />
               {order.results.map((r) => (
                 <Text key={r.id} style={{ color: colors.textMuted, fontSize: 13 }}>
                   {r.test_name}: {r.result_value}

@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, Text } from 'react-native';
 
 import { getTelemedicineHistory } from '../api/endpoints';
-import { Card, EmptyState, LoadingView, Screen } from '../components/ui';
+import { Card, EmptyState, LoadingView, Screen, StatusBadge } from '../components/ui';
 import { errorMessage, useApi } from '../hooks/useApi';
 import { colors, spacing } from '../theme';
 
@@ -36,7 +36,7 @@ export default function TelemedicineHistoryScreen() {
               <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 2 }}>
                 {appt.department_name} · {new Date(appt.appointment_date).toLocaleString()}
               </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 13 }}>{appt.status}</Text>
+              <StatusBadge status={appt.status} />
             </Card>
           ))
         )}

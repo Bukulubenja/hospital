@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, Text } from 'react-native';
 
 import { getRefills, requestRefill } from '../api/endpoints';
-import { Card, EmptyState, LoadingView, Screen, SecondaryButton, SectionTitle } from '../components/ui';
+import { Card, EmptyState, LoadingView, Screen, SecondaryButton, SectionTitle, StatusBadge } from '../components/ui';
 import { errorMessage, useApi } from '../hooks/useApi';
 import { colors, spacing } from '../theme';
 
@@ -69,7 +69,7 @@ export default function RefillsScreen() {
           data!.refill_requests.map((req) => (
             <Card key={req.id}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>{req.drug_name}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 13 }}>{req.status}</Text>
+              <StatusBadge status={req.status} />
               {req.denial_reason ? (
                 <Text style={{ color: colors.danger, fontSize: 13 }}>{req.denial_reason}</Text>
               ) : null}
